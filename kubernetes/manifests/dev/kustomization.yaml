@@ -4,8 +4,10 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - postgres.yaml
+  - redis.yaml
   - database-secret.yaml
   - backend
+  - worker.yaml
   - frontend
 
 namespace: metis

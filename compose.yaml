@@ -1,6 +1,19 @@
 name: metis
 
 services:
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --appendonly, "yes", --appendfsync, everysec]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   database:
     image: postgres:17-alpine
     environment:
@@ -24,8 +37,11 @@ services:
     depends_on:
       database:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://metis:${POSTGRES_PASSWORD:-metis-local-only}@database:5432/metis
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
     healthcheck:
@@ -38,6 +54,22 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+
+  worker:
+    image: metis-backend:alpine
+    build:
+      context: ./src/backend
+    command: [/app/.venv/bin/metis-worker]
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://metis:${POSTGRES_PASSWORD:-metis-local-only}@database:5432/metis
+      REDIS_URL: redis://redis:6379/0
 
   frontend:
     image: metis-frontend:alpine
@@ -53,3 +85,4 @@ services:
 
 volumes:
   postgres-data:
+  redis-data:

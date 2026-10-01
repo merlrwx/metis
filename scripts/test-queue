@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-metis-local-only}"
+export DATABASE_URL="postgresql+psycopg://metis:${POSTGRES_PASSWORD}@localhost:5432/metis"
+export TEST_DATABASE_URL="$DATABASE_URL"
+export REDIS_URL="redis://localhost:6379/15"
+export TASKIQ_IDLE_TIMEOUT_MS="250"
+export TASKIQ_XREAD_BLOCK_MS="100"
+export METIS_QUEUE_TESTS="1"
+docker_config="$(mktemp -d)"
+trap 'rm -rf "$docker_config"' EXIT
+export DOCKER_CONFIG="$docker_config"
+mise exec -- docker compose up -d --wait database redis
+mise exec -- uv run --locked --project src/backend alembic -c src/backend/alembic.ini upgrade head
+mise exec -- uv run --locked --project src/backend pytest src/backend/tests --cov=backend --cov-report=term-missing --cov-fail-under=80

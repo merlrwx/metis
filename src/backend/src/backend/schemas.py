@@ -51,3 +51,21 @@ class DocumentView(BaseModel):
     current_version_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
+
+
+class TestJobCreate(BaseModel):
+    organisation_id: uuid.UUID
+
+
+class JobView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    document_version_id: uuid.UUID | None
+    status: str
+    attempts: int
+    error: str | None
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None

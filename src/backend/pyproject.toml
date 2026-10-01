@@ -10,14 +10,18 @@ dependencies = [
     "fastapi>=0.141.1",
     "psycopg[binary]>=3.2",
     "sqlalchemy>=2.0",
+    "taskiq>=0.13.0",
+    "taskiq-redis>=1.2.4",
     "uvicorn>=0.53.0",
 ]
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
+markers = ["external_worker: starts a separate background worker process"]
 
 [project.scripts]
 metis-api = "backend.main:main"
+metis-worker = "backend.worker:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/backend"]

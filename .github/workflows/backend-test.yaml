@@ -54,9 +54,22 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql+psycopg://metis:metis-test-only@localhost:5432/metis
       TEST_DATABASE_URL: postgresql+psycopg://metis:metis-test-only@localhost:5432/metis
+      REDIS_URL: redis://localhost:6379/15
+      TASKIQ_IDLE_TIMEOUT_MS: 250
+      TASKIQ_XREAD_BLOCK_MS: 100
+      METIS_QUEUE_TESTS: "1"
 
     steps:
       - name: Check out repository

@@ -18,3 +18,5 @@ patches:
               secretKeyRef:
                 name: metis-database
                 key: DATABASE_URL
+          - name: REDIS_URL
+            value: redis://dev-redis:6379/0

@@ -4,7 +4,7 @@ Metis will let organisations upload internal knowledge and ask questions with ci
 
 This starting milestone implements the application and delivery foundation from Phase 0. It reuses [devops-app](https://github.com/merlrwx/devops-app): independent uv projects, FastAPI, Streamlit, mise, multi-stage non-root Docker images, Ruff/pre-commit, pytest coverage, Trivy, Release Please, GHCR, k3d and Flux setup tools.
 
-The current milestone adds PostgreSQL, SQLAlchemy and Alembic migrations, plus tenant-associated organisation, source, and document metadata. The API exposes `GET /health`, `GET /api/info`, and organisation/source/document metadata endpoints. Authentication, binary upload, ingestion, retrieval and chat follow in later phases.
+The current milestone adds PostgreSQL-backed tenant metadata and a Redis Streams worker using Taskiq. The API can submit an idempotent test job and return its organisation-scoped status. Authentication, file upload, document ingestion, retrieval and grounded chat follow in later phases.
 
 ## Development with DevPod
 
@@ -17,19 +17,23 @@ mise exec -- ./scripts/verify
 
 The devcontainer keeps the base project's Docker-in-Docker feature. Setup installs the mise tools and locked dependencies for all three uv projects. [DevPod also supports creating a workspace from a local folder or Git repository](https://devpod.sh/docs/developing-in-workspaces/create-a-workspace).
 
-Start PostgreSQL for local API development:
+Start PostgreSQL and Redis for local API and worker development:
 
 ```bash
-docker compose up -d database
+docker compose up -d database redis
 DATABASE_URL=postgresql+psycopg://metis:metis-local-only@localhost:5432/metis \
   uv run --locked --project src/backend alembic -c src/backend/alembic.ini upgrade head
 DATABASE_URL=postgresql+psycopg://metis:metis-local-only@localhost:5432/metis \
+REDIS_URL=redis://localhost:6379/0 \
   uv run --locked --project src/backend metis-api
+DATABASE_URL=postgresql+psycopg://metis:metis-local-only@localhost:5432/metis \
+REDIS_URL=redis://localhost:6379/0 \
+  uv run --locked --project src/backend metis-worker
 ```
 
-Run Streamlit in another terminal with `uv run --locked --project src/frontend streamlit run src/frontend/app.py`. The API is on port 8000 (`/docs` for OpenAPI), and Streamlit is on port 8501. Set `BACKEND_URL` if the API runs elsewhere. DevPod forwards these ports.
+Run Streamlit in another terminal with `uv run --locked --project src/frontend streamlit run src/frontend/app.py`. The API is on port 8000 (`/docs` for OpenAPI), and Streamlit is on port 8501. Set `BACKEND_URL` if the API runs elsewhere. DevPod forwards these ports. For a queue smoke test, create an organisation, `POST /api/jobs/test` with its `organisation_id`, then poll `GET /api/organisations/{organisation_id}/jobs/{job_id}`. Reuse an `Idempotency-Key` header to retrieve the same job.
 
-Alternatively, `mise exec -- bash scripts/test-postgres` applies migrations and runs the backend integration tests against PostgreSQL. `docker compose up --build` starts PostgreSQL, applies Alembic migrations and starts both application services. The default database password is local-only; set `POSTGRES_PASSWORD` for a personal deployment and do not reuse it elsewhere.
+Alternatively, `mise exec -- bash scripts/test-postgres` applies migrations and runs backend tests against PostgreSQL. `mise exec -- bash scripts/test-queue` also runs the Redis Streams worker recovery and retry integration test using an isolated Redis database. `docker compose up --build --wait` starts PostgreSQL, Redis, API, worker, and frontend. The default database password is local-only; set `POSTGRES_PASSWORD` for a personal deployment and do not reuse it elsewhere.
 
 ## Verification
 
@@ -41,7 +45,7 @@ mise exec -- uv run --locked --project kubernetes python kubernetes/e2e_test.py
 
 `verify` checks Ruff lint and formatting, backend and frontend tests with at least 80% coverage, dependency locks, Compose configuration and rendered Kubernetes manifests. Frontend tests run Streamlit's AppTest with mocked backend responses; normal CI never calls an LLM.
 
-E2E builds both Docker images and runs the Metis services in a disposable `metis-cluster` k3d cluster. It checks API identity, removed study-tracker routes and frontend HTTP health. Successful runs delete the test cluster; failures retain it for inspection. E2E operates only on the local Docker-provider environment. See [kubernetes/README.md](kubernetes/README.md).
+E2E builds both Docker images and runs the Metis services in a disposable `metis-cluster` k3d cluster. It checks database migrations, tenant metadata persistence, a queued worker job and idempotency, removed study-tracker routes, and frontend HTTP health. Successful runs delete the test cluster; failures retain it for inspection. E2E operates only on the local Docker-provider environment. See [kubernetes/README.md](kubernetes/README.md).
 
 ## Delivery and credentials
 

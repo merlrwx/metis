@@ -14,7 +14,7 @@ def test_application_identity():
         response = client.get("/api/info")
     assert response.status_code == 200
     assert response.json()["name"] == "Metis"
-    assert response.json()["stage"] == "database-foundation"
+    assert response.json()["stage"] == "async-processing"
 
 
 def test_timer_domain_removed():

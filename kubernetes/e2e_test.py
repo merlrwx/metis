@@ -15,7 +15,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 KUBERNETES_DIR = Path(__file__).resolve().parent
 CLUSTER_NAME = "metis-cluster"
 NAMESPACE = "metis"
-SERVICES = ("dev-backend", "dev-frontend")
+SERVICES = ("dev-backend", "dev-worker", "dev-frontend")
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -125,6 +125,15 @@ def deploy_application():
         NAMESPACE,
         "--timeout=120s",
     )
+    run(
+        "kubectl",
+        "rollout",
+        "status",
+        "deployment/dev-redis",
+        "--namespace",
+        NAMESPACE,
+        "--timeout=120s",
+    )
     for name in SERVICES:
         run(
             "kubectl",
@@ -152,8 +161,10 @@ def wait_for_service(url):
     raise RuntimeError(f"Service is unavailable: {url}")
 
 
-def api(base_url, path, method="GET", payload=None, expected_status=200):
-    response = requests.request(method, f"{base_url}{path}", json=payload, timeout=5)
+def api(base_url, path, method="GET", payload=None, expected_status=200, headers=None):
+    response = requests.request(
+        method, f"{base_url}{path}", json=payload, headers=headers, timeout=5
+    )
     if response.status_code != expected_status:
         raise AssertionError(
             f"{method} {path}: expected HTTP {expected_status}, got "
@@ -171,7 +182,7 @@ def test_backend(base_url):
     require(api(base_url, "/health") == {"status": "ok"}, "Backend health check failed")
     info = api(base_url, "/api/info")
     require(info["name"] == "Metis", "Wrong backend application")
-    require(info["stage"] == "database-foundation", "Wrong application stage")
+    require(info["stage"] == "async-processing", "Wrong application stage")
     api(base_url, "/api/timer", expected_status=404)
     api(base_url, "/api/sessions", expected_status=404)
     organisation = api(
@@ -193,6 +204,32 @@ def test_backend(base_url):
     )
     documents = api(base_url, f"/api/organisations/{organisation['id']}/documents")
     require(documents[0]["id"] == document["id"], "Document metadata did not persist")
+    headers = {"Idempotency-Key": "metis-e2e-job"}
+    job = api(
+        base_url,
+        "/api/jobs/test",
+        "POST",
+        {"organisation_id": organisation["id"]},
+        202,
+        headers,
+    )
+    job_url = f"/api/organisations/{organisation['id']}/jobs/{job['id']}"
+    for _ in range(30):
+        job = api(base_url, job_url)
+        if job["status"] == "completed":
+            break
+        time.sleep(1)
+    require(job["status"] == "completed", "Background job did not complete")
+    duplicate = api(
+        base_url,
+        "/api/jobs/test",
+        "POST",
+        {"organisation_id": organisation["id"]},
+        202,
+        headers,
+    )
+    require(duplicate["id"] == job["id"], "Idempotent request created another job")
+    require(job["attempts"] == 1, "Job was processed more than once")
 
 
 def test_frontend(base_url):

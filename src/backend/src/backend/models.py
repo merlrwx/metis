@@ -130,6 +130,9 @@ class DocumentVersion(Timestamped, Base):
 class IngestionJob(Timestamped, Base):
     __tablename__ = "ingestion_jobs"
     __table_args__ = (
+        UniqueConstraint(
+            "organisation_id", "idempotency_key", name="uq_ingestion_job_idempotency"
+        ),
         CheckConstraint(
             "status IN ('pending', 'queued', 'processing', 'completed', 'failed')",
             name="ck_ingestion_job_status",
@@ -144,9 +147,10 @@ class IngestionJob(Timestamped, Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     organisation_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
-    document_version_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, nullable=False, unique=True
+    document_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, nullable=True, unique=True
     )
+    idempotency_key: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     attempts: Mapped[int] = mapped_column(nullable=False, default=0)
     error: Mapped[str | None] = mapped_column(String(4096))

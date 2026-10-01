@@ -74,10 +74,12 @@ kubectl apply -k "$SCRIPT_DIR/manifests/dev"
 # Wait for the database before the API runs migrations.
 echo "Waiting for the database to become available..."
 kubectl rollout status deployment/dev-postgres -n metis --timeout=120s
+kubectl rollout status deployment/dev-redis -n metis --timeout=120s
 
 # Wait for deployments to become available
 echo "Waiting for deployments to become available..."
 kubectl rollout status deployment/dev-backend -n metis --timeout=120s
+kubectl rollout status deployment/dev-worker -n metis --timeout=120s
 kubectl rollout status deployment/dev-frontend -n metis --timeout=120s
 
 # Get service info
