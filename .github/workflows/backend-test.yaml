@@ -70,6 +70,8 @@ jobs:
       TASKIQ_IDLE_TIMEOUT_MS: 250
       TASKIQ_XREAD_BLOCK_MS: 100
       METIS_QUEUE_TESTS: "1"
+      OBJECT_STORAGE_BACKEND: local
+      OBJECT_STORAGE_LOCAL_DIR: /tmp/metis-objects
 
     steps:
       - name: Check out repository

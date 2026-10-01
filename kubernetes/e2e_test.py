@@ -15,6 +15,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 KUBERNETES_DIR = Path(__file__).resolve().parent
 CLUSTER_NAME = "metis-cluster"
 NAMESPACE = "metis"
+OBJECT_STORAGE_PATH = Path("/tmp/metis-k3d-objects")
 SERVICES = ("dev-backend", "dev-worker", "dev-frontend")
 
 logging.basicConfig(
@@ -36,6 +37,7 @@ def run(*command, cwd=ROOT_DIR, check=True, capture_output=False, env=None):
 
 
 def setup_cluster(skip_cluster_creation):
+    OBJECT_STORAGE_PATH.mkdir(parents=True, exist_ok=True)
     if skip_cluster_creation:
         run("kubectl", "config", "use-context", f"k3d-{CLUSTER_NAME}")
         return
@@ -173,6 +175,20 @@ def api(base_url, path, method="GET", payload=None, expected_status=200, headers
     return response.json()
 
 
+def upload_file(base_url, path, filename, content, mime_type):
+    response = requests.post(
+        f"{base_url}{path}",
+        files={"file": (filename, content, mime_type)},
+        timeout=15,
+    )
+    if response.status_code != 202:
+        raise AssertionError(
+            f"POST {path}: expected HTTP 202, got "
+            f"{response.status_code}: {response.text}"
+        )
+    return response.json()
+
+
 def require(condition, message):
     if not condition:
         raise AssertionError(message)
@@ -204,6 +220,28 @@ def test_backend(base_url):
     )
     documents = api(base_url, f"/api/organisations/{organisation['id']}/documents")
     require(documents[0]["id"] == document["id"], "Document metadata did not persist")
+    upload = upload_file(
+        base_url,
+        f"/api/organisations/{organisation['id']}/documents/upload",
+        "policy.md",
+        b"# Clinic policy\n\nRecord medication incidents promptly.",
+        "text/markdown",
+    )
+    job_url = f"/api/organisations/{organisation['id']}/jobs/{upload['job']['id']}"
+    for _ in range(30):
+        job = api(base_url, job_url)
+        if job["status"] == "indexed":
+            break
+        time.sleep(1)
+    require(job["status"] == "indexed", "Uploaded document was not indexed")
+    uploaded_document = api(
+        base_url,
+        f"/api/organisations/{organisation['id']}/documents/{upload['document']['id']}",
+    )
+    require(
+        uploaded_document["ingestion_status"] == "indexed",
+        "Document API did not expose indexed status",
+    )
     headers = {"Idempotency-Key": "metis-e2e-job"}
     job = api(
         base_url,

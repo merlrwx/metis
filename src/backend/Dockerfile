@@ -24,6 +24,7 @@ FROM python:3.13.15-alpine3.24
 
 # Create a non-root user and group with specific IDs
 RUN addgroup -S -g 1000 app && adduser -S -u 1000 -G app app
+RUN mkdir -p /data/metis-objects && chown app:app /data/metis-objects
 
 # Copy the environment, but not the source code
 COPY --from=builder --chown=app:app /app/.venv /app/.venv

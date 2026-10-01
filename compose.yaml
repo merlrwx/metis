@@ -42,8 +42,12 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://metis:${POSTGRES_PASSWORD:-metis-local-only}@database:5432/metis
       REDIS_URL: redis://redis:6379/0
+      OBJECT_STORAGE_BACKEND: local
+      OBJECT_STORAGE_LOCAL_DIR: /data/metis-objects
     ports:
       - "8000:8000"
+    volumes:
+      - metis-objects:/data/metis-objects
     healthcheck:
       test:
         - CMD
@@ -70,6 +74,10 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://metis:${POSTGRES_PASSWORD:-metis-local-only}@database:5432/metis
       REDIS_URL: redis://redis:6379/0
+      OBJECT_STORAGE_BACKEND: local
+      OBJECT_STORAGE_LOCAL_DIR: /data/metis-objects
+    volumes:
+      - metis-objects:/data/metis-objects
 
   frontend:
     image: metis-frontend:alpine
@@ -86,3 +94,4 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  metis-objects:

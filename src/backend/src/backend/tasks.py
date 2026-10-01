@@ -2,9 +2,13 @@ import asyncio
 import os
 import uuid
 
+from sqlalchemy import select
+
 from backend import database
+from backend.models import DocumentVersion
 from backend.queue import broker
-from backend.services import jobs
+from backend.services import ingestion, jobs
+from backend.storage import get_object_storage
 
 
 @broker.task
@@ -26,16 +30,51 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
     parsed_organisation_id = uuid.UUID(organisation_id)
     with database.SessionLocal() as session:
         attempt = jobs.start_attempt(session, parsed_organisation_id, parsed_job_id)
+        job = jobs.get_job(session, parsed_organisation_id, parsed_job_id)
+        document_version_id = job.document_version_id if job is not None else None
     if attempt is None:
         return
 
     try:
-        await asyncio.sleep(
-            float(os.environ.get("METIS_TEST_JOB_DELAY_SECONDS", "0.1"))
-        )
-        failure_count = int(os.environ.get("METIS_TEST_JOB_FAIL_ATTEMPTS", "0"))
-        if attempt <= failure_count:
-            raise RuntimeError("simulated transient worker failure")
+        if document_version_id is None:
+            await asyncio.sleep(
+                float(os.environ.get("METIS_TEST_JOB_DELAY_SECONDS", "0.1"))
+            )
+            failure_count = int(os.environ.get("METIS_TEST_JOB_FAIL_ATTEMPTS", "0"))
+            if attempt <= failure_count:
+                raise RuntimeError("simulated transient worker failure")
+        else:
+            with database.SessionLocal() as session:
+                version = session.scalar(
+                    select(DocumentVersion).where(
+                        DocumentVersion.organisation_id == parsed_organisation_id,
+                        DocumentVersion.id == document_version_id,
+                    )
+                )
+                if version is None:
+                    raise RuntimeError("Ingestion document version was not found")
+                object_key, filename, mime_type = (
+                    version.object_key,
+                    version.filename,
+                    version.mime_type,
+                )
+            storage = get_object_storage()
+            data = await asyncio.to_thread(storage.get, object_key)
+            extracted = await asyncio.to_thread(
+                ingestion.extract_document, filename, mime_type, data
+            )
+            with database.SessionLocal() as session:
+                version = session.scalar(
+                    select(DocumentVersion).where(
+                        DocumentVersion.organisation_id == parsed_organisation_id,
+                        DocumentVersion.id == document_version_id,
+                    )
+                )
+                if version is None:
+                    raise RuntimeError("Ingestion document version was not found")
+                version.extracted_text = extracted.text
+                version.extraction_metadata = extracted.metadata
+                jobs.mark_indexed(session, parsed_organisation_id, parsed_job_id)
     except Exception as error:
         with database.SessionLocal() as session:
             should_retry = jobs.record_failure(
@@ -45,5 +84,6 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
             raise
         return
 
-    with database.SessionLocal() as session:
-        jobs.mark_completed(session, parsed_organisation_id, parsed_job_id)
+    if document_version_id is None:
+        with database.SessionLocal() as session:
+            jobs.mark_completed(session, parsed_organisation_id, parsed_job_id)

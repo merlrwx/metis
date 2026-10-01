@@ -1,10 +1,37 @@
 import os
+from io import BytesIO
 
 import pytest
 from backend.models import Base
+from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 from sqlalchemy.orm import sessionmaker
 
 from backend import database
+
+
+@pytest.fixture
+def sample_pdf():
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+    font = writer._add_object(
+        DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Font"),
+                NameObject("/Subtype"): NameObject("/Type1"),
+                NameObject("/BaseFont"): NameObject("/Helvetica"),
+            }
+        )
+    )
+    page[NameObject("/Resources")] = DictionaryObject(
+        {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})}
+    )
+    stream = DecodedStreamObject()
+    stream.set_data(b"BT /F1 12 Tf 72 720 Td (Medication incident policy) Tj ET")
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
 
 
 @pytest.fixture(autouse=True)

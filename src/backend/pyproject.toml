@@ -7,8 +7,12 @@ authors = [{ name = "Jason Standen", email = "jason@merl.one" }]
 requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.16",
+    "boto3>=1.38",
     "fastapi>=0.141.1",
     "psycopg[binary]>=3.2",
+    "pypdf>=5.4",
+    "python-docx>=1.1",
+    "python-multipart>=0.0.20",
     "sqlalchemy>=2.0",
     "taskiq>=0.13.0",
     "taskiq-redis>=1.2.4",

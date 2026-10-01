@@ -97,7 +97,7 @@ def start_attempt(
         )
         .with_for_update()
     )
-    if job is None or job.status in {"completed", "failed"}:
+    if job is None or job.status in {"completed", "indexed", "failed"}:
         return None
     job.status = "processing"
     job.attempts += 1
@@ -114,7 +114,7 @@ def record_failure(
     error: str,
 ) -> bool:
     job = get_job(session, organisation_id, job_id)
-    if job is None or job.status in {"completed", "failed"}:
+    if job is None or job.status in {"completed", "indexed", "failed"}:
         return False
     should_retry = job.attempts < MAX_JOB_ATTEMPTS
     job.status = "queued" if should_retry else "failed"
@@ -131,6 +131,17 @@ def mark_completed(
     job = get_job(session, organisation_id, job_id)
     if job is not None and job.status == "processing":
         job.status = "completed"
+        job.error = None
+        job.completed_at = datetime.now(UTC)
+        session.commit()
+
+
+def mark_indexed(
+    session: Session, organisation_id: uuid.UUID, job_id: uuid.UUID
+) -> None:
+    job = get_job(session, organisation_id, job_id)
+    if job is not None and job.status == "processing":
+        job.status = "indexed"
         job.error = None
         job.completed_at = datetime.now(UTC)
         session.commit()

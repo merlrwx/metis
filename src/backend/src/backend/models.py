@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     String,
+    Text,
     UniqueConstraint,
     Uuid,
     func,
@@ -121,10 +122,15 @@ class DocumentVersion(Timestamped, Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     organisation_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     document_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
     checksum: Mapped[str] = mapped_column(String(64), nullable=False)
     object_key: Mapped[str] = mapped_column(String(2048), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(255), nullable=False)
     size_bytes: Mapped[int] = mapped_column(nullable=False)
+    extracted_text: Mapped[str | None] = mapped_column(Text)
+    extraction_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSON_OBJECT, nullable=False, default=dict
+    )
 
 
 class IngestionJob(Timestamped, Base):
@@ -134,7 +140,7 @@ class IngestionJob(Timestamped, Base):
             "organisation_id", "idempotency_key", name="uq_ingestion_job_idempotency"
         ),
         CheckConstraint(
-            "status IN ('pending', 'queued', 'processing', 'completed', 'failed')",
+            "status IN ('pending', 'queued', 'processing', 'completed', 'indexed', 'failed')",
             name="ck_ingestion_job_status",
         ),
         ForeignKeyConstraint(

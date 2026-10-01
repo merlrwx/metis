@@ -20,3 +20,30 @@ patches:
                 key: DATABASE_URL
           - name: REDIS_URL
             value: redis://dev-redis:6379/0
+          - name: OBJECT_STORAGE_BACKEND
+            value: local
+          - name: OBJECT_STORAGE_LOCAL_DIR
+            value: /data/metis-objects
+      - op: add
+        path: /spec/template/spec/initContainers
+        value:
+          - name: prepare-object-storage
+            image: busybox:1.37
+            command: [sh, -c, "mkdir -p /data/metis-objects && chown 1000:1000 /data/metis-objects"]
+            securityContext:
+              runAsUser: 0
+            volumeMounts:
+              - name: metis-objects
+                mountPath: /data/metis-objects
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts
+        value:
+          - name: metis-objects
+            mountPath: /data/metis-objects
+      - op: add
+        path: /spec/template/spec/volumes
+        value:
+          - name: metis-objects
+            hostPath:
+              path: /var/lib/metis/objects
+              type: DirectoryOrCreate

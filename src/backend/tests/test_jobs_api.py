@@ -56,7 +56,11 @@ def test_job_submission_requires_a_configured_queue(monkeypatch):
         )
 
     with database.SessionLocal() as session:
-        job_count = session.scalar(select(func.count()).select_from(IngestionJob))
+        job_count = session.scalar(
+            select(func.count())
+            .select_from(IngestionJob)
+            .where(IngestionJob.organisation_id == uuid.UUID(organisation["id"]))
+        )
 
     assert response.status_code == 503
     assert job_count == 0

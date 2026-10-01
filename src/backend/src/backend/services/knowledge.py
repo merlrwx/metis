@@ -74,3 +74,14 @@ def list_documents(session: Session, organisation_id: uuid.UUID) -> list[Documen
             .order_by(Document.created_at.desc(), Document.id)
         )
     )
+
+
+def get_document(
+    session: Session, organisation_id: uuid.UUID, document_id: uuid.UUID
+) -> Document | None:
+    return session.scalar(
+        select(Document).where(
+            Document.organisation_id == organisation_id,
+            Document.id == document_id,
+        )
+    )

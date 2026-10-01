@@ -7,10 +7,13 @@ from pathlib import Path
 
 import pytest
 from backend.main import app
+from backend.models import DocumentVersion
 from backend.queue import broker
 from fastapi.testclient import TestClient
 from redis import Redis
 from redis.exceptions import ResponseError
+
+from backend import database
 
 pytestmark = [
     pytest.mark.external_worker,
@@ -75,6 +78,14 @@ def submit_job(client, organisation_id, key):
     return response.json()
 
 
+def reset_stream(redis):
+    try:
+        redis.xgroup_destroy(broker.queue_name, broker.consumer_group_name)
+    except ResponseError:
+        pass
+    redis.delete(broker.queue_name)
+
+
 def test_worker_restart_retry_and_idempotency():
     redis = Redis.from_url(os.environ["REDIS_URL"])
     stream = broker.queue_name
@@ -124,4 +135,65 @@ def test_worker_restart_retry_and_idempotency():
     finally:
         if "worker" in locals():
             stop_worker(worker)
+        redis.close()
+
+
+def test_uploaded_pdf_is_extracted_and_reuses_its_indexed_version(sample_pdf):
+    redis = Redis.from_url(os.environ["REDIS_URL"])
+    reset_stream(redis)
+    worker = start_worker()
+    try:
+        with TestClient(app) as client:
+            organisation = client.post(
+                "/api/organisations", json={"name": "PDF ingestion"}
+            ).json()
+            path = f"/api/organisations/{organisation['id']}/documents/upload"
+            response = client.post(
+                path,
+                files={
+                    "file": (
+                        "policy.pdf",
+                        sample_pdf,
+                        "application/pdf",
+                    )
+                },
+            )
+            assert response.status_code == 202, response.text
+            upload = response.json()
+            job = wait_for_status(
+                client,
+                organisation["id"],
+                upload["job"]["id"],
+                "indexed",
+            )
+            assert job["attempts"] == 1
+
+            document = client.get(
+                f"/api/organisations/{organisation['id']}/documents/"
+                f"{upload['document']['id']}"
+            ).json()
+            assert document["ingestion_status"] == "indexed"
+
+            duplicate = client.post(
+                path,
+                files={
+                    "file": (
+                        "policy.pdf",
+                        sample_pdf,
+                        "application/pdf",
+                    )
+                },
+            )
+            assert duplicate.status_code == 202, duplicate.text
+            assert duplicate.json()["job"]["id"] == job["id"]
+            with database.SessionLocal() as session:
+                version = session.get(
+                    DocumentVersion, upload["document"]["current_version_id"]
+                )
+                assert version.extracted_text == "Medication incident policy"
+                assert version.extraction_metadata["pages"] == [
+                    {"page": 1, "start": 0, "end": 26}
+                ]
+    finally:
+        stop_worker(worker)
         redis.close()

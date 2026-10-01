@@ -51,6 +51,8 @@ class DocumentView(BaseModel):
     current_version_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
+    ingestion_status: str | None = None
+    ingestion_error: str | None = None
 
 
 class TestJobCreate(BaseModel):
@@ -69,3 +71,8 @@ class JobView(BaseModel):
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
+
+
+class UploadView(BaseModel):
+    document: DocumentView
+    job: JobView
