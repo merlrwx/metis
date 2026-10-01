@@ -3,20 +3,23 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.models import Conversation, Message, User
-
-LOCAL_USER_EMAIL = "local-session@metis.invalid"
+from backend.models import Conversation, Message
 
 
 def get_conversation(
-    session: Session, organisation_id: uuid.UUID, conversation_id: uuid.UUID
+    session: Session,
+    organisation_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    user_id: uuid.UUID,
+    role: str,
 ) -> Conversation | None:
-    return session.scalar(
-        select(Conversation).where(
-            Conversation.organisation_id == organisation_id,
-            Conversation.id == conversation_id,
-        )
+    statement = select(Conversation).where(
+        Conversation.organisation_id == organisation_id,
+        Conversation.id == conversation_id,
     )
+    if role not in {"owner", "admin"}:
+        statement = statement.where(Conversation.user_id == user_id)
+    return session.scalar(statement)
 
 
 def get_history(
@@ -40,6 +43,7 @@ def get_history(
 def save_turn(
     session: Session,
     organisation_id: uuid.UUID,
+    user_id: uuid.UUID,
     conversation: Conversation | None,
     conversation_id: uuid.UUID,
     question: str,
@@ -50,15 +54,10 @@ def save_turn(
     output_tokens: int | None,
 ) -> Conversation:
     if conversation is None:
-        user = session.scalar(select(User).where(User.email == LOCAL_USER_EMAIL))
-        if user is None:
-            user = User(email=LOCAL_USER_EMAIL, name="Local session")
-            session.add(user)
-            session.flush()
         conversation = Conversation(
             id=conversation_id,
             organisation_id=organisation_id,
-            user_id=user.id,
+            user_id=user_id,
             title=question[:512],
         )
         session.add(conversation)

@@ -16,24 +16,36 @@ from fastapi import (
     Query,
     UploadFile,
 )
-from sqlalchemy import text
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend import chat, embeddings
+from backend import auth, chat, embeddings
 from backend.database import get_session
-from backend.models import IngestionJob, Organisation
+from backend.models import (
+    IngestionJob,
+    Organisation,
+    OrganisationMembership,
+    User,
+)
 from backend.queue import QUEUE_CONFIGURED, broker
 from backend.schemas import (
+    AuditEventView,
     ChatRequest,
     ChatResponse,
     ChatUsageView,
     CitationView,
     ConversationMessageView,
     ConversationView,
+    CurrentUserView,
     DocumentCreate,
     DocumentView,
     JobView,
+    MemberAdd,
+    MembershipView,
     OrganisationCreate,
+    OrganisationMemberView,
     OrganisationView,
     SearchRequest,
     SearchResultView,
@@ -41,9 +53,12 @@ from backend.schemas import (
     SourceCreate,
     SourceView,
     TestJobCreate,
+    TokenView,
     UploadView,
+    UserRegister,
+    UserView,
 )
-from backend.services import conversations, ingestion, knowledge, rag
+from backend.services import audit, conversations, ingestion, knowledge, rag
 from backend.services import documents as document_service
 from backend.services import jobs as job_service
 from backend.storage import get_object_storage
@@ -95,11 +110,233 @@ def info() -> dict[str, str]:
     }
 
 
+@app.post("/api/auth/register", response_model=UserView, status_code=201)
+def register_user(
+    payload: UserRegister, session: Annotated[Session, Depends(get_session)]
+) -> UserView:
+    if session.scalar(select(User.id).where(User.email == payload.email)) is not None:
+        raise HTTPException(status_code=409, detail="Email is already registered")
+    user = User(
+        email=payload.email,
+        name=payload.name,
+        password_hash=auth.hash_password(payload.password),
+    )
+    session.add(user)
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(
+            status_code=409, detail="Email is already registered"
+        ) from error
+    session.refresh(user)
+    return user
+
+
+@app.post("/api/auth/token", response_model=TokenView)
+def issue_token(
+    form: Annotated[OAuth2PasswordRequestForm, Depends()],
+    session: Annotated[Session, Depends(get_session)],
+) -> TokenView:
+    email = form.username.strip().casefold()
+    user = session.scalar(select(User).where(User.email == email))
+    password_valid = auth.verify_password(
+        form.password, user.password_hash if user is not None else None
+    )
+    if user is None or not password_valid:
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        access_token = auth.create_access_token(user.id)
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=503, detail="Authentication is not configured"
+        ) from error
+    return TokenView(access_token=access_token)
+
+
+@app.get("/api/auth/me", response_model=CurrentUserView)
+def current_user(
+    user: Annotated[User, Depends(auth.get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> CurrentUserView:
+    memberships = session.execute(
+        select(OrganisationMembership, Organisation)
+        .join(Organisation, Organisation.id == OrganisationMembership.organisation_id)
+        .where(OrganisationMembership.user_id == user.id)
+        .order_by(Organisation.name, Organisation.id)
+    ).all()
+    return CurrentUserView(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        created_at=user.created_at,
+        memberships=[
+            MembershipView(
+                organisation_id=membership.organisation_id,
+                organisation_name=organisation.name,
+                role=membership.role,
+            )
+            for membership, organisation in memberships
+        ],
+    )
+
+
+@app.post(
+    "/api/organisations/{organisation_id}/claim",
+    response_model=OrganisationView,
+)
+def claim_unowned_organisation(
+    organisation_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    user: Annotated[User, Depends(auth.get_current_user)],
+    bootstrap_token: Annotated[
+        str | None, Header(alias="X-Metis-Bootstrap-Token")
+    ] = None,
+) -> OrganisationView:
+    auth.require_bootstrap_token(bootstrap_token)
+    organisation = session.scalar(
+        select(Organisation).where(Organisation.id == organisation_id).with_for_update()
+    )
+    if organisation is None:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+    if (
+        session.scalar(
+            select(OrganisationMembership.user_id).where(
+                OrganisationMembership.organisation_id == organisation_id
+            )
+        )
+        is not None
+    ):
+        raise HTTPException(status_code=409, detail="Organisation already has members")
+    session.add(
+        OrganisationMembership(
+            organisation_id=organisation_id, user_id=user.id, role="owner"
+        )
+    )
+    audit.record_event(
+        session,
+        organisation_id,
+        user.id,
+        "organisation.claimed",
+        "organisation",
+        organisation_id,
+    )
+    session.commit()
+    session.refresh(organisation)
+    return organisation
+
+
 @app.post("/api/organisations", response_model=OrganisationView, status_code=201)
 def create_organisation(
-    payload: OrganisationCreate, session: Annotated[Session, Depends(get_session)]
+    payload: OrganisationCreate,
+    session: Annotated[Session, Depends(get_session)],
+    user: Annotated[User, Depends(auth.get_current_user)],
 ) -> OrganisationView:
-    return knowledge.create_organisation(session, payload.name)
+    organisation = Organisation(name=payload.name.strip())
+    session.add(organisation)
+    session.flush()
+    session.add(
+        OrganisationMembership(
+            organisation_id=organisation.id, user_id=user.id, role="owner"
+        )
+    )
+    audit.record_event(
+        session,
+        organisation.id,
+        user.id,
+        "organisation.created",
+        "organisation",
+        organisation.id,
+    )
+    session.commit()
+    session.refresh(organisation)
+    return organisation
+
+
+@app.get(
+    "/api/organisations/{organisation_id}/members",
+    response_model=list[OrganisationMemberView],
+)
+def list_members(
+    organisation_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    _: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+) -> list[OrganisationMemberView]:
+    rows = session.execute(
+        select(OrganisationMembership, User)
+        .join(User, User.id == OrganisationMembership.user_id)
+        .where(OrganisationMembership.organisation_id == organisation_id)
+        .order_by(OrganisationMembership.created_at, User.email)
+    ).all()
+    return [
+        OrganisationMemberView(
+            user_id=user.id,
+            email=user.email,
+            name=user.name,
+            role=membership.role,
+            created_at=membership.created_at,
+        )
+        for membership, user in rows
+    ]
+
+
+@app.post(
+    "/api/organisations/{organisation_id}/members",
+    response_model=OrganisationMemberView,
+    status_code=201,
+)
+def add_member(
+    organisation_id: UUID,
+    payload: MemberAdd,
+    session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+) -> OrganisationMemberView:
+    if payload.role == "admin" and actor.role != "owner":
+        raise HTTPException(status_code=403, detail="Only an owner can add admins")
+    user = session.scalar(select(User).where(User.email == payload.email))
+    if user is None or user.password_hash is None:
+        raise HTTPException(status_code=404, detail="Registered user not found")
+    if session.get(OrganisationMembership, (organisation_id, user.id)) is not None:
+        raise HTTPException(status_code=409, detail="User is already a member")
+    membership = OrganisationMembership(
+        organisation_id=organisation_id, user_id=user.id, role=payload.role
+    )
+    session.add(membership)
+    audit.record_event(
+        session,
+        organisation_id,
+        actor.user_id,
+        "member.added",
+        "user",
+        user.id,
+        {"role": payload.role},
+    )
+    session.commit()
+    session.refresh(membership)
+    return OrganisationMemberView(
+        user_id=user.id,
+        email=user.email,
+        name=user.name,
+        role=membership.role,
+        created_at=membership.created_at,
+    )
+
+
+@app.get(
+    "/api/organisations/{organisation_id}/audit-events",
+    response_model=list[AuditEventView],
+)
+def list_audit_events(
+    organisation_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    _: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[AuditEventView]:
+    return audit.list_events(session, organisation_id, limit)
 
 
 @app.post(
@@ -111,6 +348,7 @@ def create_source(
     organisation_id: UUID,
     payload: SourceCreate,
     session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
 ) -> SourceView:
     source = knowledge.create_source(
         session,
@@ -121,6 +359,15 @@ def create_source(
     )
     if source is None:
         raise HTTPException(status_code=404, detail="Organisation not found")
+    audit.record_event(
+        session,
+        organisation_id,
+        actor.user_id,
+        "source.created",
+        "source",
+        source.id,
+    )
+    session.commit()
     return source
 
 
@@ -133,6 +380,7 @@ def create_document(
     organisation_id: UUID,
     payload: DocumentCreate,
     session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
 ) -> DocumentView:
     document = knowledge.create_document(
         session,
@@ -143,6 +391,15 @@ def create_document(
     )
     if document is None:
         raise HTTPException(status_code=404, detail="Organisation or source not found")
+    audit.record_event(
+        session,
+        organisation_id,
+        actor.user_id,
+        "document.created",
+        "document",
+        document.id,
+    )
+    session.commit()
     return document
 
 
@@ -175,6 +432,7 @@ def document_view(session: Session, document) -> DocumentView:
 async def upload_document(
     organisation_id: UUID,
     session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
     file: Annotated[UploadFile, File()],
     source_id: Annotated[UUID | None, Form()] = None,
 ) -> UploadView:
@@ -209,6 +467,17 @@ async def upload_document(
     if document is None or job is None:
         raise HTTPException(status_code=404, detail="Organisation or source not found")
 
+    audit.record_event(
+        session,
+        organisation_id,
+        actor.user_id,
+        "document.uploaded",
+        "document",
+        document.id,
+        {"job_id": str(job.id)},
+    )
+    session.commit()
+
     if created or job.status == "pending":
         await publish_job(session, job)
     session.expire_all()
@@ -225,6 +494,7 @@ def get_document(
     organisation_id: UUID,
     document_id: UUID,
     session: Annotated[Session, Depends(get_session)],
+    _: Annotated[OrganisationMembership, Depends(auth.require_membership)],
 ) -> DocumentView:
     document = knowledge.get_document(session, organisation_id, document_id)
     if document is None:
@@ -237,7 +507,9 @@ def get_document(
     response_model=list[DocumentView],
 )
 def list_documents(
-    organisation_id: UUID, session: Annotated[Session, Depends(get_session)]
+    organisation_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    _: Annotated[OrganisationMembership, Depends(auth.require_membership)],
 ) -> list[DocumentView]:
     return [
         document_view(session, document)
@@ -250,6 +522,7 @@ def search_documents(
     organisation_id: UUID,
     payload: SearchRequest,
     session: Annotated[Session, Depends(get_session)],
+    _: Annotated[OrganisationMembership, Depends(auth.require_membership)],
 ) -> SearchView:
     if session.get(Organisation, organisation_id) is None:
         raise HTTPException(status_code=404, detail="Organisation not found")
@@ -309,6 +582,7 @@ def chat_with_knowledge(
     organisation_id: UUID,
     payload: ChatRequest,
     session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_membership)],
 ) -> ChatResponse:
     if session.get(Organisation, organisation_id) is None:
         raise HTTPException(status_code=404, detail="Organisation not found")
@@ -317,7 +591,11 @@ def chat_with_knowledge(
     conversation_id = payload.conversation_id or uuid4()
     if payload.conversation_id is not None:
         conversation = conversations.get_conversation(
-            session, organisation_id, payload.conversation_id
+            session,
+            organisation_id,
+            payload.conversation_id,
+            actor.user_id,
+            actor.role,
         )
         if conversation is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
@@ -362,6 +640,7 @@ def chat_with_knowledge(
     conversations.save_turn(
         session,
         organisation_id,
+        actor.user_id,
         conversation,
         conversation_id,
         payload.message,
@@ -371,6 +650,19 @@ def chat_with_knowledge(
         completion.input_tokens if completion else None,
         completion.output_tokens if completion else None,
     )
+    audit.record_event(
+        session,
+        organisation_id,
+        actor.user_id,
+        "chat.turn",
+        "conversation",
+        conversation_id,
+        {
+            "citation_count": len(citations),
+            "model_id": completion.model_id if completion else None,
+        },
+    )
+    session.commit()
     return ChatResponse(
         conversation_id=conversation_id,
         answer=grounded.content,
@@ -391,10 +683,11 @@ def get_conversation(
     organisation_id: UUID,
     conversation_id: UUID,
     session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_membership)],
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> ConversationView:
     conversation = conversations.get_conversation(
-        session, organisation_id, conversation_id
+        session, organisation_id, conversation_id, actor.user_id, actor.role
     )
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -416,10 +709,16 @@ def get_conversation(
 async def create_test_job(
     payload: TestJobCreate,
     session: Annotated[Session, Depends(get_session)],
+    user: Annotated[User, Depends(auth.get_current_user)],
     idempotency_key: Annotated[
         str | None, Header(alias="Idempotency-Key", max_length=255)
     ] = None,
 ) -> JobView:
+    membership = session.get(OrganisationMembership, (payload.organisation_id, user.id))
+    if membership is None:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+    if membership.role not in {"owner", "admin"}:
+        raise HTTPException(status_code=403, detail="Organisation admin role required")
     if not QUEUE_CONFIGURED:
         raise HTTPException(status_code=503, detail="Background queue is unavailable")
     job, created = job_service.create_test_job(
@@ -438,6 +737,7 @@ def get_ingestion_job(
     organisation_id: UUID,
     job_id: UUID,
     session: Annotated[Session, Depends(get_session)],
+    _: Annotated[OrganisationMembership, Depends(auth.require_membership)],
 ) -> JobView:
     job = job_service.get_job(session, organisation_id, job_id)
     if job is None:

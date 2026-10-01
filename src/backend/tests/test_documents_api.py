@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock
 
 from backend.storage import LocalObjectStorage
-from fastapi.testclient import TestClient
+from backend_test_client import new_authenticated_client
 
 from backend import main
 
@@ -12,7 +12,7 @@ def configure_upload(monkeypatch, tmp_path):
     monkeypatch.setattr(
         main, "get_object_storage", lambda: LocalObjectStorage(tmp_path)
     )
-    return TestClient(main.app)
+    return new_authenticated_client(main.app)
 
 
 def test_upload_returns_tenant_scoped_job_and_reuses_duplicate(monkeypatch, tmp_path):

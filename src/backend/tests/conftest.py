@@ -37,6 +37,10 @@ def sample_pdf():
 @pytest.fixture(autouse=True)
 def isolated_database(tmp_path, request, monkeypatch):
     monkeypatch.setenv("EMBEDDING_PROVIDER", "hashing")
+    monkeypatch.setenv(
+        "METIS_AUTH_SECRET_KEY", "metis-ci-only-secret-key-with-at-least-32-chars"
+    )
+    monkeypatch.setenv("METIS_BOOTSTRAP_TOKEN", "metis-ci-only-bootstrap-token")
     test_database_url = os.environ.get("TEST_DATABASE_URL")
     if test_database_url:
         database.configure_database(test_database_url)

@@ -45,6 +45,8 @@ services:
       OBJECT_STORAGE_BACKEND: local
       OBJECT_STORAGE_LOCAL_DIR: /data/metis-objects
       EMBEDDING_PROVIDER: hashing
+      METIS_AUTH_SECRET_KEY: ${METIS_AUTH_SECRET_KEY:-metis-local-development-secret-change-before-use}
+      METIS_BOOTSTRAP_TOKEN: ${METIS_BOOTSTRAP_TOKEN:-metis-local-bootstrap-token}
     ports:
       - "8000:8000"
     volumes:

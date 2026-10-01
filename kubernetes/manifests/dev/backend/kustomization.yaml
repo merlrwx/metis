@@ -18,6 +18,16 @@ patches:
               secretKeyRef:
                 name: metis-database
                 key: DATABASE_URL
+          - name: METIS_AUTH_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: metis-database
+                key: METIS_AUTH_SECRET_KEY
+          - name: METIS_BOOTSTRAP_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: metis-database
+                key: METIS_BOOTSTRAP_TOKEN
           - name: REDIS_URL
             value: redis://dev-redis:6379/0
           - name: OBJECT_STORAGE_BACKEND

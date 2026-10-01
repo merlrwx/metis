@@ -2,11 +2,99 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+
+
+class UserRegister(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    name: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=12, max_length=256)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        email = value.strip().casefold()
+        if email.count("@") != 1 or any(character.isspace() for character in email):
+            raise ValueError("Enter a valid email address")
+        return email
+
+    @field_validator("name")
+    @classmethod
+    def trim_name(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("Name cannot be blank")
+        return name
+
+
+class UserView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: str
+    name: str
+    created_at: datetime
+
+
+class TokenView(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class MembershipView(BaseModel):
+    organisation_id: uuid.UUID
+    organisation_name: str
+    role: str
+
+
+class CurrentUserView(UserView):
+    memberships: list[MembershipView]
+
+
+class MemberAdd(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    role: str = Field(default="member", pattern="^(admin|member)$")
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        email = value.strip().casefold()
+        if email.count("@") != 1 or any(character.isspace() for character in email):
+            raise ValueError("Enter a valid email address")
+        return email
+
+
+class OrganisationMemberView(BaseModel):
+    user_id: uuid.UUID
+    email: str
+    name: str
+    role: str
+    created_at: datetime
+
+
+class AuditEventView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    actor_user_id: uuid.UUID | None
+    action: str
+    resource_type: str
+    resource_id: uuid.UUID | None
+    details: dict[str, Any]
+    created_at: datetime
 
 
 class OrganisationCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def trim_name(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("Organisation name cannot be blank")
+        return name
 
 
 class OrganisationView(BaseModel):

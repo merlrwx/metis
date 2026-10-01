@@ -2,13 +2,13 @@ import uuid
 
 from backend.main import app
 from backend.services import jobs
-from fastapi.testclient import TestClient
+from backend_test_client import authenticated_client
 
 from backend import database
 
 
 def make_job(name="Job service"):
-    with TestClient(app) as client:
+    with authenticated_client(app) as client:
         organisation = client.post("/api/organisations", json={"name": name}).json()
     organisation_id = uuid.UUID(organisation["id"])
     with database.SessionLocal() as session:

@@ -3,7 +3,7 @@ import uuid
 from backend.main import app
 from backend.models import IngestionJob
 from backend.services import jobs
-from fastapi.testclient import TestClient
+from backend_test_client import authenticated_client
 from sqlalchemy import func, select
 
 from backend import database
@@ -11,7 +11,7 @@ from backend import main as main_module
 
 
 def test_idempotency_key_is_stable_and_organisation_scoped():
-    with TestClient(app) as client:
+    with authenticated_client(app) as client:
         first = client.post("/api/organisations", json={"name": "First"}).json()
         second = client.post("/api/organisations", json={"name": "Second"}).json()
     with database.SessionLocal() as session:
@@ -33,13 +33,13 @@ def test_idempotency_key_is_stable_and_organisation_scoped():
 
 
 def test_job_status_is_organisation_scoped():
-    with TestClient(app) as client:
+    with authenticated_client(app) as client:
         first = client.post("/api/organisations", json={"name": "First"}).json()
         second = client.post("/api/organisations", json={"name": "Second"}).json()
     with database.SessionLocal() as session:
         job, _ = jobs.create_test_job(session, uuid.UUID(first["id"]), None)
 
-    with TestClient(app) as client:
+    with authenticated_client(app) as client:
         response = client.get(f"/api/organisations/{second['id']}/jobs/{job.id}")
 
     assert response.status_code == 404
@@ -47,7 +47,7 @@ def test_job_status_is_organisation_scoped():
 
 def test_job_submission_requires_a_configured_queue(monkeypatch):
     monkeypatch.setattr(main_module, "QUEUE_CONFIGURED", False)
-    with TestClient(app) as client:
+    with authenticated_client(app) as client:
         organisation = client.post(
             "/api/organisations", json={"name": "Queue unavailable"}
         ).json()
@@ -78,7 +78,7 @@ def test_publish_failure_leaves_a_retryable_job(monkeypatch):
     monkeypatch.setattr(main_module.broker, "shutdown", no_op)
     monkeypatch.setattr(main_module.process_ingestion_job, "kiq", fail_publish)
 
-    with TestClient(app) as client:
+    with authenticated_client(app) as client:
         organisation = client.post(
             "/api/organisations", json={"name": "Queue outage"}
         ).json()

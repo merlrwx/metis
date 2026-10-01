@@ -22,6 +22,7 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("e2e-tests")
+AUTH_HEADERS = {}
 
 
 def run(*command, cwd=ROOT_DIR, check=True, capture_output=False, env=None):
@@ -165,7 +166,11 @@ def wait_for_service(url):
 
 def api(base_url, path, method="GET", payload=None, expected_status=200, headers=None):
     response = requests.request(
-        method, f"{base_url}{path}", json=payload, headers=headers, timeout=5
+        method,
+        f"{base_url}{path}",
+        json=payload,
+        headers={**AUTH_HEADERS, **(headers or {})},
+        timeout=5,
     )
     if response.status_code != expected_status:
         raise AssertionError(
@@ -175,10 +180,11 @@ def api(base_url, path, method="GET", payload=None, expected_status=200, headers
     return response.json()
 
 
-def upload_file(base_url, path, filename, content, mime_type):
+def upload_file(base_url, path, filename, content, mime_type, headers=None):
     response = requests.post(
         f"{base_url}{path}",
         files={"file": (filename, content, mime_type)},
+        headers={**AUTH_HEADERS, **(headers or {})},
         timeout=15,
     )
     if response.status_code != 202:
@@ -195,6 +201,32 @@ def require(condition, message):
 
 
 def test_backend(base_url):
+    registered = api(
+        base_url,
+        "/api/auth/register",
+        "POST",
+        {
+            "email": "e2e-owner@example.test",
+            "name": "E2E Owner",
+            "password": "e2e-test-password",
+        },
+        201,
+    )
+    token_response = requests.post(
+        f"{base_url}/api/auth/token",
+        data={"username": registered["email"], "password": "e2e-test-password"},
+        timeout=5,
+    )
+    require(token_response.status_code == 200, "Bearer token login failed")
+    AUTH_HEADERS["Authorization"] = f"Bearer {token_response.json()['access_token']}"
+    api(
+        base_url,
+        "/api/organisations",
+        "POST",
+        {"name": "Unauthenticated"},
+        401,
+        {"Authorization": ""},
+    )
     require(api(base_url, "/health") == {"status": "ok"}, "Backend health check failed")
     info = api(base_url, "/api/info")
     require(info["name"] == "Metis", "Wrong backend application")
@@ -284,6 +316,42 @@ def test_backend(base_url):
     )
     require(duplicate["id"] == job["id"], "Idempotent request created another job")
     require(job["attempts"] == 1, "Job was processed more than once")
+
+    requests.post(
+        f"{base_url}/api/auth/register",
+        json={
+            "email": "e2e-tenant-b@example.test",
+            "name": "E2E Tenant B",
+            "password": "e2e-test-password",
+        },
+        timeout=5,
+    ).raise_for_status()
+    tenant_b_token = requests.post(
+        f"{base_url}/api/auth/token",
+        data={
+            "username": "e2e-tenant-b@example.test",
+            "password": "e2e-test-password",
+        },
+        timeout=5,
+    )
+    require(tenant_b_token.status_code == 200, "Second tenant login failed")
+    AUTH_HEADERS["Authorization"] = f"Bearer {tenant_b_token.json()['access_token']}"
+    tenant_b = api(
+        base_url, "/api/organisations", "POST", {"name": "E2E Tenant B"}, 201
+    )
+    isolated_results = api(
+        base_url,
+        f"/api/organisations/{tenant_b['id']}/search",
+        "POST",
+        {"query": "Record medication incidents promptly."},
+    )
+    require(isolated_results["results"] == [], "Tenant B retrieved Tenant A's document")
+    hidden_document = api(
+        base_url,
+        f"/api/organisations/{organisation['id']}/documents/{upload['document']['id']}",
+        expected_status=404,
+    )
+    require(bool(hidden_document), "Cross-tenant document lookup failed unexpectedly")
 
 
 def test_frontend(base_url):

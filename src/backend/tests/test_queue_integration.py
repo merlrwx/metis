@@ -10,7 +10,12 @@ from backend.chat import ChatCompletion
 from backend.main import app
 from backend.models import DocumentVersion
 from backend.queue import broker
-from fastapi.testclient import TestClient
+from backend_test_client import (
+    TEST_PASSWORD,
+    authenticated_client,
+    login_as,
+    register_and_login,
+)
 from redis import Redis
 from redis.exceptions import ResponseError
 
@@ -114,7 +119,7 @@ def test_worker_restart_retry_and_idempotency():
         redis.delete(stream)
 
         worker = start_worker(METIS_TEST_JOB_DELAY_SECONDS="30")
-        with TestClient(app) as client:
+        with authenticated_client(app) as client:
             organisation = client.post(
                 "/api/organisations", json={"name": "Worker recovery"}
             ).json()
@@ -164,7 +169,7 @@ def test_uploaded_pdf_is_extracted_and_reuses_its_indexed_version(
     fake_chat = FakeChatProvider()
     monkeypatch.setattr(chat, "get_chat_provider", lambda: fake_chat)
     try:
-        with TestClient(app) as client:
+        with authenticated_client(app) as client:
             organisation = client.post(
                 "/api/organisations", json={"name": "PDF ingestion"}
             ).json()
@@ -173,7 +178,7 @@ def test_uploaded_pdf_is_extracted_and_reuses_its_indexed_version(
                 path,
                 files={
                     "file": (
-                        "policy.pdf",
+                        "secret-policy.pdf",
                         sample_pdf,
                         "application/pdf",
                     )
@@ -253,11 +258,13 @@ def test_uploaded_pdf_is_extracted_and_reuses_its_indexed_version(
             ]
             assert (
                 conversation.json()["messages"][1]["citations"][0]["document_title"]
-                == "policy.pdf"
+                == "secret-policy.pdf"
             )
 
+            owner_email = client.get("/api/auth/me").json()["email"]
+            register_and_login(client, "tenant-b@example.test")
             other_organisation = client.post(
-                "/api/organisations", json={"name": "No incident policy access"}
+                "/api/organisations", json={"name": "Tenant B"}
             ).json()
             cross_tenant_search = client.post(
                 f"/api/organisations/{other_organisation['id']}/search",
@@ -265,6 +272,11 @@ def test_uploaded_pdf_is_extracted_and_reuses_its_indexed_version(
             )
             assert cross_tenant_search.status_code == 200
             assert cross_tenant_search.json()["results"] == []
+            hidden_document = client.get(
+                f"/api/organisations/{organisation['id']}/documents/"
+                f"{upload['document']['id']}"
+            )
+            assert hidden_document.status_code == 404
             empty_chat = client.post(
                 f"/api/organisations/{other_organisation['id']}/chat",
                 json={"message": "What do we do after a medication incident?"},
@@ -279,11 +291,12 @@ def test_uploaded_pdf_is_extracted_and_reuses_its_indexed_version(
             )
             assert cross_tenant_conversation.status_code == 404
 
+            login_as(client, owner_email, TEST_PASSWORD)
             duplicate = client.post(
                 path,
                 files={
                     "file": (
-                        "policy.pdf",
+                        "secret-policy.pdf",
                         sample_pdf,
                         "application/pdf",
                     )

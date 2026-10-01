@@ -8,13 +8,13 @@ from backend.services import documents as document_service
 from backend.services import jobs
 from backend.storage import LocalObjectStorage
 from backend.tasks import run_ingestion_job
-from fastapi.testclient import TestClient
+from backend_test_client import authenticated_client, new_authenticated_client
 
 from backend import database
 
 
 def make_job(name):
-    with TestClient(app) as client:
+    with authenticated_client(app) as client:
         organisation = client.post("/api/organisations", json={"name": name}).json()
     organisation_id = uuid.UUID(organisation["id"])
     with database.SessionLocal() as session:
@@ -68,7 +68,7 @@ def test_document_job_extracts_text_and_marks_version_indexed(
 ):
     monkeypatch.setenv("OBJECT_STORAGE_BACKEND", "local")
     monkeypatch.setenv("OBJECT_STORAGE_LOCAL_DIR", str(tmp_path))
-    with TestClient(app) as client:
+    with authenticated_client(app) as client:
         organisation = client.post(
             "/api/organisations", json={"name": "Extract document"}
         ).json()
@@ -108,7 +108,7 @@ def test_document_job_extracts_text_and_marks_version_indexed(
 
 
 def test_document_worker_does_not_read_another_organisations_job(tmp_path, sample_pdf):
-    client = TestClient(app)
+    client = new_authenticated_client(app)
     organisation = client.post(
         "/api/organisations", json={"name": "Document owner"}
     ).json()

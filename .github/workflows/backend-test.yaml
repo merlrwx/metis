@@ -75,6 +75,8 @@ jobs:
       OBJECT_STORAGE_BACKEND: local
       OBJECT_STORAGE_LOCAL_DIR: /tmp/metis-objects
       EMBEDDING_PROVIDER: hashing
+      METIS_AUTH_SECRET_KEY: metis-ci-only-secret-key-with-at-least-32-chars
+      METIS_BOOTSTRAP_TOKEN: metis-ci-only-bootstrap-token
 
     steps:
       - name: Check out repository
