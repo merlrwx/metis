@@ -4,7 +4,7 @@ Metis will let organisations upload internal knowledge and ask questions with ci
 
 This starting milestone implements the application and delivery foundation from Phase 0. It reuses [devops-app](https://github.com/merlrwx/devops-app): independent uv projects, FastAPI, Streamlit, mise, multi-stage non-root Docker images, Ruff/pre-commit, pytest coverage, Trivy, Release Please, GHCR, k3d and Flux setup tools.
 
-The API currently provides `GET /health` and `GET /api/info`. The frontend reports API connectivity. Upload, retrieval, chat, authentication and tenant data are not implemented yet. The next milestone is Phase 1: PostgreSQL, SQLAlchemy, Alembic, organisations and tenant-scoped document metadata. Later phases add Redis Streams/Taskiq, ingestion, pgvector and RAG.
+The current milestone adds PostgreSQL, SQLAlchemy and Alembic migrations, plus tenant-associated organisation, source, and document metadata. The API exposes `GET /health`, `GET /api/info`, and organisation/source/document metadata endpoints. Authentication, binary upload, ingestion, retrieval and chat follow in later phases.
 
 ## Development with DevPod
 
@@ -17,20 +17,19 @@ mise exec -- ./scripts/verify
 
 The devcontainer keeps the base project's Docker-in-Docker feature. Setup installs the mise tools and locked dependencies for all three uv projects. [DevPod also supports creating a workspace from a local folder or Git repository](https://devpod.sh/docs/developing-in-workspaces/create-a-workspace).
 
-Run these in separate terminals inside the workspace:
+Start PostgreSQL for local API development:
 
 ```bash
-uv run --locked --project src/backend metis-api
-uv run --locked --project src/frontend streamlit run src/frontend/app.py
+docker compose up -d database
+DATABASE_URL=postgresql+psycopg://metis:metis-local-only@localhost:5432/metis \
+  uv run --locked --project src/backend alembic -c src/backend/alembic.ini upgrade head
+DATABASE_URL=postgresql+psycopg://metis:metis-local-only@localhost:5432/metis \
+  uv run --locked --project src/backend metis-api
 ```
 
-The API is on port 8000 (`/docs` for OpenAPI), and Streamlit is on port 8501. Set `BACKEND_URL` if the API runs elsewhere. DevPod forwards these ports.
+Run Streamlit in another terminal with `uv run --locked --project src/frontend streamlit run src/frontend/app.py`. The API is on port 8000 (`/docs` for OpenAPI), and Streamlit is on port 8501. Set `BACKEND_URL` if the API runs elsewhere. DevPod forwards these ports.
 
-Alternatively:
-
-```bash
-docker compose up --build
-```
+Alternatively, `mise exec -- bash scripts/test-postgres` applies migrations and runs the backend integration tests against PostgreSQL. `docker compose up --build` starts PostgreSQL, applies Alembic migrations and starts both application services. The default database password is local-only; set `POSTGRES_PASSWORD` for a personal deployment and do not reuse it elsewhere.
 
 ## Verification
 

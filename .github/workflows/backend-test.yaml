@@ -40,6 +40,23 @@ jobs:
     defaults:
       run:
         working-directory: src/backend
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: metis
+          POSTGRES_USER: metis
+          POSTGRES_PASSWORD: metis-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U metis -d metis"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://metis:metis-test-only@localhost:5432/metis
+      TEST_DATABASE_URL: postgresql+psycopg://metis:metis-test-only@localhost:5432/metis
 
     steps:
       - name: Check out repository
@@ -55,6 +72,9 @@ jobs:
 
       - name: Install locked dependencies
         run: uv sync --locked
+
+      - name: Apply PostgreSQL migrations
+        run: uv run --locked alembic -c alembic.ini upgrade head
 
       - name: Run tests with coverage
         run: uv run --locked pytest tests/ -v --cov=backend --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80

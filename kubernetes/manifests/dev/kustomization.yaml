@@ -3,6 +3,8 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
+  - postgres.yaml
+  - database-secret.yaml
   - backend
   - frontend
 

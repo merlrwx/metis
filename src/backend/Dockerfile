@@ -27,10 +27,13 @@ RUN addgroup -S -g 1000 app && adduser -S -u 1000 -G app app
 
 # Copy the environment, but not the source code
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
+COPY --from=builder --chown=app:app /app/alembic.ini /app/alembic.ini
+COPY --from=builder --chown=app:app /app/migrations /app/migrations
+COPY --chown=app:app start-api.sh /app/start-api.sh
 
 WORKDIR /app
 USER app
 EXPOSE 8000
 
 # Run the application
-CMD ["/app/.venv/bin/metis-api"]
+CMD ["/app/start-api.sh"]

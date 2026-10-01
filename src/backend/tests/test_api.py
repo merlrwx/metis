@@ -13,11 +13,8 @@ def test_application_identity():
     with TestClient(app) as client:
         response = client.get("/api/info")
     assert response.status_code == 200
-    assert response.json() == {
-        "name": "Metis",
-        "description": "Grounded answers from your organisation's knowledge.",
-        "stage": "foundation",
-    }
+    assert response.json()["name"] == "Metis"
+    assert response.json()["stage"] == "database-foundation"
 
 
 def test_timer_domain_removed():

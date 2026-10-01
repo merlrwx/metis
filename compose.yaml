@@ -1,10 +1,31 @@
 name: metis
 
 services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: metis
+      POSTGRES_USER: metis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-metis-local-only}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U metis -d metis]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   backend:
     image: metis-backend:alpine
     build:
       context: ./src/backend
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://metis:${POSTGRES_PASSWORD:-metis-local-only}@database:5432/metis
     ports:
       - "8000:8000"
     healthcheck:
@@ -29,3 +50,6 @@ services:
       BACKEND_URL: http://backend:8000
     ports:
       - "8501:8501"
+
+volumes:
+  postgres-data:

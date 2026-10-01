@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-metis-local-only}"
+export DATABASE_URL="postgresql+psycopg://metis:${POSTGRES_PASSWORD}@localhost:5432/metis"
+mise exec -- docker compose up -d --wait database
+mise exec -- uv run --locked --project src/backend alembic -c src/backend/alembic.ini upgrade head
+export TEST_DATABASE_URL="$DATABASE_URL"
+mise exec -- uv run --locked --project src/backend pytest src/backend/tests --cov=backend --cov-report=term-missing --cov-fail-under=80

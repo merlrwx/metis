@@ -1,9 +1,11 @@
 import argparse
 import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -21,10 +23,15 @@ logging.basicConfig(
 logger = logging.getLogger("e2e-tests")
 
 
-def run(*command, cwd=ROOT_DIR, check=True, capture_output=False):
+def run(*command, cwd=ROOT_DIR, check=True, capture_output=False, env=None):
     logger.info("Running: %s", " ".join(map(str, command)))
     return subprocess.run(
-        command, cwd=cwd, check=check, capture_output=capture_output, text=True
+        command,
+        cwd=cwd,
+        check=check,
+        capture_output=capture_output,
+        text=True,
+        env=env,
     )
 
 
@@ -52,15 +59,18 @@ def setup_cluster(skip_cluster_creation):
 def build_and_load_images():
     for app in ("backend", "frontend"):
         directory = ROOT_DIR / "src" / app
-        run(
-            "docker",
-            "build",
-            "--tag",
-            f"{app}:dev",
-            "--file",
-            directory / "Dockerfile",
-            directory,
-        )
+        with tempfile.TemporaryDirectory(prefix="metis-docker-") as docker_config:
+            docker_env = {**os.environ, "DOCKER_CONFIG": docker_config}
+            run(
+                "docker",
+                "build",
+                "--tag",
+                f"{app}:dev",
+                "--file",
+                directory / "Dockerfile",
+                directory,
+                env=docker_env,
+            )
         run(
             "k3d",
             "image",
@@ -106,6 +116,15 @@ def service_url(name):
 
 def deploy_application():
     run("kubectl", "apply", "-k", KUBERNETES_DIR / "manifests" / "dev")
+    run(
+        "kubectl",
+        "rollout",
+        "status",
+        "deployment/dev-postgres",
+        "--namespace",
+        NAMESPACE,
+        "--timeout=120s",
+    )
     for name in SERVICES:
         run(
             "kubectl",
@@ -152,9 +171,28 @@ def test_backend(base_url):
     require(api(base_url, "/health") == {"status": "ok"}, "Backend health check failed")
     info = api(base_url, "/api/info")
     require(info["name"] == "Metis", "Wrong backend application")
-    require(info["stage"] == "foundation", "Wrong application stage")
+    require(info["stage"] == "database-foundation", "Wrong application stage")
     api(base_url, "/api/timer", expected_status=404)
     api(base_url, "/api/sessions", expected_status=404)
+    organisation = api(
+        base_url, "/api/organisations", "POST", {"name": "E2E Clinic"}, 201
+    )
+    source = api(
+        base_url,
+        f"/api/organisations/{organisation['id']}/sources",
+        "POST",
+        {"name": "Uploaded documents"},
+        201,
+    )
+    document = api(
+        base_url,
+        f"/api/organisations/{organisation['id']}/documents",
+        "POST",
+        {"title": "Known policy", "source_id": source["id"]},
+        201,
+    )
+    documents = api(base_url, f"/api/organisations/{organisation['id']}/documents")
+    require(documents[0]["id"] == document["id"], "Document metadata did not persist")
 
 
 def test_frontend(base_url):
