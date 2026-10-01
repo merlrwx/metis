@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,7 +14,7 @@ jobs:
   check_paths:
     runs-on: ubuntu-24.04
     outputs:
-      should_run: ${{ steps.filter.outputs.frontend }}
+      should_run: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.frontend }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7.0.1
@@ -21,6 +22,7 @@ jobs:
       - name: Filter frontend paths
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
+        if: github.event_name != 'workflow_dispatch'
         with:
           filters: |
             frontend:
