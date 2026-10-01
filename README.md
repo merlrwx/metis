@@ -37,7 +37,7 @@ uv run --locked --project src/backend metis-worker
 
 Set `METIS_AUTH_SECRET_KEY` to a unique random value of at least 32 characters before starting the API. Set `METIS_BOOTSTRAP_TOKEN` to a separate random value; it is only used to claim existing organisations that have no members. Compose supplies local-only defaults, which must be replaced for any shared deployment.
 
-Run Streamlit in another terminal with `uv run --locked --project src/frontend streamlit run src/frontend/app.py`. The API is on port 8000 (`/docs` for OpenAPI), and Streamlit is on port 8501. Set `BACKEND_URL` if the API runs elsewhere. DevPod forwards these ports. Create an account, request a token, and create an organization:
+Run Streamlit in another terminal with `uv run --locked --project src/frontend streamlit run src/frontend/app.py`. The API is on port 8000 (`/docs` for OpenAPI), and Streamlit is on port 8501. Set `BACKEND_URL` if the API runs elsewhere. DevPod forwards these ports. The UI supports registration and sign-in, organisation selection, document upload and status, source management, cited chat, and member settings. You can use its Create account flow and create an organisation after signing in, or use the API directly:
 
 ```bash
 curl -X POST http://localhost:8000/api/auth/register \

@@ -1,9 +1,10 @@
 import uuid
+from unittest.mock import AsyncMock
 
 from backend.main import app
-from backend.models import IngestionJob
+from backend.models import Document, DocumentVersion, IngestionJob
 from backend.services import jobs
-from backend_test_client import authenticated_client
+from backend_test_client import authenticated_client, new_authenticated_client
 from sqlalchemy import func, select
 
 from backend import database
@@ -99,3 +100,64 @@ def test_publish_failure_leaves_a_retryable_job(monkeypatch):
     assert job.status == "pending"
     assert job.attempts == 0
     assert job.error == "Unable to publish job: ConnectionError"
+
+
+def test_failed_document_ingestion_can_be_retried(monkeypatch):
+    monkeypatch.setattr(main_module, "QUEUE_CONFIGURED", True)
+    monkeypatch.setattr(main_module.process_ingestion_job, "kiq", AsyncMock())
+
+    client = new_authenticated_client(app)
+    organisation = client.post(
+        "/api/organisations", json={"name": "Retry clinic"}
+    ).json()
+    other_organisation = client.post(
+        "/api/organisations", json={"name": "Other clinic"}
+    ).json()
+    created = client.post(
+        f"/api/organisations/{organisation['id']}/documents",
+        json={"title": "Policy"},
+    ).json()
+    organisation_id = uuid.UUID(organisation["id"])
+    document_id = uuid.UUID(created["id"])
+
+    with database.SessionLocal() as session:
+        document = session.get(Document, document_id)
+        version = DocumentVersion(
+            organisation_id=organisation_id,
+            document_id=document_id,
+            filename="policy.txt",
+            checksum="a" * 64,
+            object_key=f"organisations/{organisation_id}/policy.txt",
+            mime_type="text/plain",
+            size_bytes=1,
+        )
+        session.add(version)
+        session.flush()
+        document.current_version_id = version.id
+        job = IngestionJob(
+            organisation_id=organisation_id,
+            document_version_id=version.id,
+            status="failed",
+            attempts=3,
+            error="Text extraction failed",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    cross_tenant = client.post(
+        f"/api/organisations/{other_organisation['id']}/documents/{document_id}/retry"
+    )
+    retried = client.post(
+        f"/api/organisations/{organisation['id']}/documents/{document_id}/retry"
+    )
+    repeated = client.post(
+        f"/api/organisations/{organisation['id']}/documents/{document_id}/retry"
+    )
+
+    assert cross_tenant.status_code == 404
+    assert retried.status_code == 202
+    assert retried.json()["id"] == str(job_id)
+    assert retried.json()["status"] == "queued"
+    assert retried.json()["attempts"] == 0
+    assert repeated.status_code == 409

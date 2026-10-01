@@ -371,6 +371,18 @@ def create_source(
     return source
 
 
+@app.get(
+    "/api/organisations/{organisation_id}/sources",
+    response_model=list[SourceView],
+)
+def list_sources(
+    organisation_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    _: Annotated[OrganisationMembership, Depends(auth.require_membership)],
+) -> list[SourceView]:
+    return knowledge.list_sources(session, organisation_id)
+
+
 @app.post(
     "/api/organisations/{organisation_id}/documents",
     response_model=DocumentView,
@@ -500,6 +512,41 @@ def get_document(
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return document_view(session, document)
+
+
+@app.post(
+    "/api/organisations/{organisation_id}/documents/{document_id}/retry",
+    response_model=JobView,
+    status_code=202,
+)
+async def retry_document_ingestion(
+    organisation_id: UUID,
+    document_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+) -> JobView:
+    if not QUEUE_CONFIGURED:
+        raise HTTPException(status_code=503, detail="Background queue is unavailable")
+    if knowledge.get_document(session, organisation_id, document_id) is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    job = job_service.retry_failed_document_job(session, organisation_id, document_id)
+    if job is None:
+        raise HTTPException(
+            status_code=409, detail="Document has no failed current ingestion"
+        )
+    audit.record_event(
+        session,
+        organisation_id,
+        actor.user_id,
+        "document.ingestion_retried",
+        "document",
+        document_id,
+        {"job_id": str(job.id)},
+    )
+    session.commit()
+    await publish_job(session, job)
+    session.expire_all()
+    return job_service.get_job(session, organisation_id, job.id) or job
 
 
 @app.get(

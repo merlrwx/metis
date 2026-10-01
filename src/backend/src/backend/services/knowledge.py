@@ -44,6 +44,16 @@ def create_source(
     return source
 
 
+def list_sources(session: Session, organisation_id: uuid.UUID) -> list[Source]:
+    return list(
+        session.scalars(
+            select(Source)
+            .where(Source.organisation_id == organisation_id)
+            .order_by(Source.created_at, Source.id)
+        )
+    )
+
+
 def create_document(
     session: Session,
     organisation_id: uuid.UUID,

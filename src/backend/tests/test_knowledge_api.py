@@ -14,6 +14,7 @@ def test_organisation_source_and_document_metadata_persist():
         )
         assert source.status_code == 201
         source_id = source.json()["id"]
+        listed_sources = client.get(f"/api/organisations/{organisation_id}/sources")
 
         created = client.post(
             f"/api/organisations/{organisation_id}/documents",
@@ -30,6 +31,7 @@ def test_organisation_source_and_document_metadata_persist():
 
     assert [document["id"] for document in documents.json()] == [document_id]
     assert documents.json()[0]["title"] == "Medication policy"
+    assert [item["id"] for item in listed_sources.json()] == [source_id]
 
 
 def test_document_access_is_organisation_scoped():
@@ -47,9 +49,12 @@ def test_document_access_is_organisation_scoped():
         missing = client.get(
             "/api/organisations/00000000-0000-0000-0000-000000000000/documents"
         )
+        sources = client.get(f"/api/organisations/{second['id']}/sources")
 
     assert denied.status_code == 404
     assert missing.status_code == 404
+    assert sources.status_code == 200
+    assert sources.json() == []
 
 
 def test_missing_organisation_and_source_are_not_created():

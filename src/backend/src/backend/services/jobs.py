@@ -5,7 +5,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.models import IngestionJob, Organisation
+from backend.models import Document, DocumentVersion, IngestionJob, Organisation
 
 MAX_JOB_ATTEMPTS = 3
 
@@ -58,6 +58,42 @@ def get_job(
             IngestionJob.id == job_id,
         )
     )
+
+
+def retry_failed_document_job(
+    session: Session, organisation_id: uuid.UUID, document_id: uuid.UUID
+) -> IngestionJob | None:
+    job = session.scalar(
+        select(IngestionJob)
+        .join(
+            DocumentVersion,
+            (DocumentVersion.id == IngestionJob.document_version_id)
+            & (DocumentVersion.organisation_id == IngestionJob.organisation_id),
+        )
+        .join(
+            Document,
+            (Document.id == DocumentVersion.document_id)
+            & (Document.organisation_id == DocumentVersion.organisation_id),
+        )
+        .where(
+            IngestionJob.organisation_id == organisation_id,
+            Document.organisation_id == organisation_id,
+            Document.id == document_id,
+            Document.current_version_id == DocumentVersion.id,
+            IngestionJob.status == "failed",
+        )
+        .with_for_update()
+    )
+    if job is None:
+        return None
+    job.status = "pending"
+    job.attempts = 0
+    job.error = None
+    job.started_at = None
+    job.completed_at = None
+    session.commit()
+    session.refresh(job)
+    return job
 
 
 def mark_queued(

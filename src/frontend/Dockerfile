@@ -28,6 +28,7 @@ RUN addgroup -S -g 1000 app && adduser -S -u 1000 -G app app
 # Copy the environment and application files
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 COPY --chown=app:app app.py /app/app.py
+COPY --chown=app:app api_client.py /app/api_client.py
 
 # Run the application
 WORKDIR /app

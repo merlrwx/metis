@@ -30,8 +30,10 @@ The API container applies Alembic migrations before serving requests. `HOST` def
 - `GET/POST /api/organisations/{id}/members`: owners and admins can list members and add registered users. Only owners may grant the admin role.
 - `GET /api/organisations/{id}/audit-events`: list the latest 100 tenant-scoped events; owners and admins only.
 - `POST /api/organisations/{id}/sources`: create a tenant-owned source.
+- `GET /api/organisations/{id}/sources`: list the organisation’s sources for any member.
 - `POST /api/organisations/{id}/documents`: create document metadata, with an optional tenant-owned source.
 - `POST /api/organisations/{id}/documents/upload`: upload a PDF, DOCX, TXT, or Markdown file; returns its document and queued ingestion job.
+- `POST /api/organisations/{id}/documents/{document_id}/retry`: owners and admins can requeue a failed ingestion for the document’s current version.
 - `GET /api/organisations/{id}/documents`: list documents and their current ingestion status, scoped to that organisation.
 - `GET /api/organisations/{id}/documents/{document_id}`: read document metadata and ingestion status within that organisation.
 - `POST /api/organisations/{id}/search`: return the closest current document chunks with source, document, page and section metadata. Optional `source_id`, `document_id` and `limit` fields narrow the results.
