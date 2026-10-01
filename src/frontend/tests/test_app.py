@@ -9,11 +9,11 @@ from streamlit.testing.v1 import AppTest
 APP = Path(__file__).resolve().parents[1] / "app.py"
 
 
-def test_vector_search_shows_backend_connection(monkeypatch):
+def test_grounded_chat_shows_backend_connection(monkeypatch):
     monkeypatch.setenv("BACKEND_URL", "http://backend:8000/")
     with patch(
         "urllib.request.urlopen",
-        return_value=io.BytesIO(b'{"name":"Metis","stage":"vector-search"}'),
+        return_value=io.BytesIO(b'{"name":"Metis","stage":"grounded-chat"}'),
     ) as request:
         app = AppTest.from_file(str(APP)).run()
     assert not app.exception

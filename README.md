@@ -4,7 +4,7 @@ Metis will let organisations upload internal knowledge and ask questions with ci
 
 The application follows the delivery foundation established in Phase 0 and reuses [devops-app](https://github.com/merlrwx/devops-app): independent uv projects, FastAPI, Streamlit, mise, multi-stage non-root Docker images, Ruff/pre-commit, pytest coverage, Trivy, Release Please, GHCR, k3d and Flux setup tools.
 
-The current milestone adds PostgreSQL-backed tenant metadata, a Redis Streams worker using Taskiq, document ingestion, and exact vector retrieval with pgvector. Organisations can upload PDF, DOCX, TXT, or Markdown files; the worker extracts text, splits it into overlapping chunks, and stores 1536-dimensional embeddings with page or section offsets. Search applies organisation, source, document, and current-version filters. Authentication and grounded chat follow in later phases.
+The current milestone adds PostgreSQL-backed tenant metadata, a Redis Streams worker using Taskiq, document ingestion, exact vector retrieval with pgvector, and basic grounded chat. Organisations can upload PDF, DOCX, TXT, or Markdown files; the worker extracts text, splits it into overlapping chunks, and stores 1536-dimensional embeddings with page or section offsets. Search and chat apply organisation and current-version filters. Answers cite retrieved chunks, unsupported questions receive a fixed refusal, and conversations store messages, citations, model identity, and token usage. Authentication and membership enforcement follow in Phase 6.
 
 ## Development with DevPod
 
@@ -46,11 +46,13 @@ curl -X POST -H 'Content-Type: application/json' \
 
 Reuse an `Idempotency-Key` header with `POST /api/jobs/test` to retrieve the same test job.
 
+With the GPTMock bridge available, continue a grounded conversation through `POST /api/organisations/{organisation_id}/chat` using `{"message":"What do we do after a medication incident?"}`. Reuse the returned `conversation_id` for follow-up turns; load the saved transcript from `GET /api/organisations/{organisation_id}/conversations/{conversation_id}`. The conversation endpoints are tenant-scoped, but the API does not require authentication until Phase 6.
+
 Compose, k3d development, and CI use the deterministic `hashing` embedding provider; it is for local retrieval checks and is not a semantic model. For semantic embeddings, configure an OpenAI-compatible embeddings endpoint with `EMBEDDING_PROVIDER=openai-compatible`, `EMBEDDING_BASE_URL` (defaults to `https://api.openai.com/v1`), `EMBEDDING_MODEL` (defaults to `text-embedding-3-small`), and `EMBEDDING_API_KEY` or `OPENAI_API_KEY`. The configured model must return 1536 values per embedding. No standard CI job calls an embedding or chat service.
 
 For an S3-compatible object store, provision the bucket first, then set `OBJECT_STORAGE_BACKEND=s3`, `S3_BUCKET`, and optionally `S3_ENDPOINT_URL` and `AWS_REGION`; provide credentials through the standard AWS environment variables or the runtime’s credential provider. Keep the local backend for tests and single-workspace development. The Dev k3d overlay mounts one temporary host directory into its nodes for disposable local testing.
 
-Alternatively, `mise exec -- bash scripts/test-postgres` applies migrations and runs backend tests against PostgreSQL. `mise exec -- bash scripts/test-queue` also runs Redis worker recovery, retries, PDF upload-to-indexed, and tenant-filtered vector search checks using an isolated Redis database and temporary local object store. `docker compose up --build --wait` starts PostgreSQL with pgvector, Redis, API, worker, and frontend. The default database password is local-only; set `POSTGRES_PASSWORD` for a personal deployment and do not reuse it elsewhere.
+Alternatively, `mise exec -- bash scripts/test-postgres` applies migrations and runs backend tests against PostgreSQL. `mise exec -- bash scripts/test-queue` also runs Redis worker recovery, retries, PDF upload-to-indexed, tenant-filtered vector search, and mocked multi-turn cited chat checks using an isolated Redis database and temporary local object store. `docker compose up --build --wait` starts PostgreSQL with pgvector, Redis, API, worker, and frontend. The default database password is local-only; set `POSTGRES_PASSWORD` for a personal deployment and do not reuse it elsewhere.
 
 ## Verification
 
@@ -78,21 +80,26 @@ GitOps updates are opt-in via repository variable `ENABLE_GITOPS=true`. Before e
 
 The reusable workflow updates dev image tags and opens a prod promotion PR. GitOps and live Flux reconciliation remain unverified until that separate repo and credentials are configured. The existing devops-app GitOps environment is unchanged.
 
-## Local LLM testing (later RAG phase)
+## Local LLM testing
 
-The supplied plan uses LangChain `ChatOpenAI` with the existing GPTMock bridge. On the workstation:
+Metis uses LangChain `ChatOpenAI` with the existing GPTMock bridge. Forward its service to a workstation port that does not conflict with the Metis API:
 
 ```bash
-kubectl -n hermes port-forward svc/chatmock 8000:8000
+kubectl -n hermes port-forward svc/chatmock 8001:8000
+export GPTMOCK_BASE_URL=http://127.0.0.1:8001/v1
+export GPTMOCK_MODEL=gpt-6-luna
+# GPTMOCK_API_KEY defaults to the placeholder "chatmock".
+export GPTMOCK_TIMEOUT=120
+export GPTMOCK_MAX_RETRIES=1
 ```
 
-Use `GPTMOCK_BASE_URL=http://127.0.0.1:8000/v1`, `GPTMOCK_MODEL=gpt-6-luna`, placeholder API key `chatmock`, `use_responses_api=False`, a 120-second timeout and one retry. This port-forward occupies the same workstation port as the API; use port 8001 for the bridge if running both and update the base URL.
+Start the API with those variables in its environment, then call the chat endpoint above. The adapter uses the Chat Completions API (`use_responses_api=False`). Standard tests replace the provider and make no live model calls.
 
-Inside Kubernetes, the planned URL is `http://chatmock.hermes.svc.cluster.local:8000/v1`. A DevPod has its own network namespace: its localhost is not the workstation. Reach a workstation port-forward through an explicit SSH reverse tunnel or a reachable host address. For example, from the workstation, after forwarding the bridge to port 8001:
+Inside Kubernetes, the bridge URL is `http://chatmock.hermes.svc.cluster.local:8000/v1`. A DevPod has its own network namespace: its localhost is not the workstation. When running the backend directly inside the DevPod, reach a workstation port-forward through an SSH reverse tunnel:
 
 ```bash
 devpod ssh metis -R 8001:127.0.0.1:8001
 # Inside that session, use GPTMOCK_BASE_URL=http://127.0.0.1:8001/v1
 ```
 
-LangChain chat is planned for the next RAG phase. LangGraph is deferred until a real branching workflow requires it, as specified by the architectural plan. The current milestone makes no live LLM calls and does not verify bridge availability.
+The bridge has not been checked from this workspace, so live GPTMock compatibility remains unverified. LangGraph remains deferred until a real branching workflow requires it, as specified by the architectural plan.

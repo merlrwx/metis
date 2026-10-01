@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 import pytest
+from backend.chat import ChatCompletion
 from backend.main import app
 from backend.models import DocumentVersion
 from backend.queue import broker
@@ -13,7 +14,7 @@ from fastapi.testclient import TestClient
 from redis import Redis
 from redis.exceptions import ResponseError
 
-from backend import database
+from backend import chat, database
 
 pytestmark = [
     pytest.mark.external_worker,
@@ -22,6 +23,22 @@ pytestmark = [
         reason="requires the isolated Redis and PostgreSQL integration services",
     ),
 ]
+
+
+class FakeChatProvider:
+    model_id = "test-chat-v1"
+
+    def __init__(self):
+        self.calls = []
+
+    def generate(self, messages):
+        self.calls.append(messages)
+        return ChatCompletion(
+            "Notify the supervisor and record the incident [C1].",
+            self.model_id,
+            21,
+            8,
+        )
 
 
 def start_worker(**extra_env):
@@ -138,10 +155,14 @@ def test_worker_restart_retry_and_idempotency():
         redis.close()
 
 
-def test_uploaded_pdf_is_extracted_and_reuses_its_indexed_version(sample_pdf):
+def test_uploaded_pdf_is_extracted_and_reuses_its_indexed_version(
+    sample_pdf, monkeypatch
+):
     redis = Redis.from_url(os.environ["REDIS_URL"])
     reset_stream(redis)
     worker = start_worker()
+    fake_chat = FakeChatProvider()
+    monkeypatch.setattr(chat, "get_chat_provider", lambda: fake_chat)
     try:
         with TestClient(app) as client:
             organisation = client.post(
@@ -191,6 +212,50 @@ def test_uploaded_pdf_is_extracted_and_reuses_its_indexed_version(sample_pdf):
                 "Medication incident policy" in search.json()["results"][0]["content"]
             )
 
+            chat_path = f"/api/organisations/{organisation['id']}/chat"
+            first_turn = client.post(
+                chat_path,
+                json={"message": "What do we do after a medication incident?"},
+            )
+            assert first_turn.status_code == 200, first_turn.text
+            first_answer = first_turn.json()
+            assert "notify the supervisor" in first_answer["answer"].casefold()
+            assert first_answer["model_id"] == "test-chat-v1"
+            assert first_answer["usage"] == {"input_tokens": 21, "output_tokens": 8}
+            assert (
+                first_answer["citations"][0]["document_id"] == upload["document"]["id"]
+            )
+
+            second_turn = client.post(
+                chat_path,
+                json={
+                    "conversation_id": first_answer["conversation_id"],
+                    "message": "Repeat the medication incident policy.",
+                },
+            )
+            assert second_turn.status_code == 200, second_turn.text
+            assert [message[0] for message in fake_chat.calls[1][-3:]] == [
+                "user",
+                "assistant",
+                "human",
+            ]
+
+            conversation = client.get(
+                f"/api/organisations/{organisation['id']}/conversations/"
+                f"{first_answer['conversation_id']}"
+            )
+            assert conversation.status_code == 200, conversation.text
+            assert [message["role"] for message in conversation.json()["messages"]] == [
+                "user",
+                "assistant",
+                "user",
+                "assistant",
+            ]
+            assert (
+                conversation.json()["messages"][1]["citations"][0]["document_title"]
+                == "policy.pdf"
+            )
+
             other_organisation = client.post(
                 "/api/organisations", json={"name": "No incident policy access"}
             ).json()
@@ -200,6 +265,19 @@ def test_uploaded_pdf_is_extracted_and_reuses_its_indexed_version(sample_pdf):
             )
             assert cross_tenant_search.status_code == 200
             assert cross_tenant_search.json()["results"] == []
+            empty_chat = client.post(
+                f"/api/organisations/{other_organisation['id']}/chat",
+                json={"message": "What do we do after a medication incident?"},
+            )
+            assert empty_chat.status_code == 200, empty_chat.text
+            assert empty_chat.json()["citations"] == []
+            assert "couldn't find enough" in empty_chat.json()["answer"]
+            assert len(fake_chat.calls) == 2
+            cross_tenant_conversation = client.get(
+                f"/api/organisations/{other_organisation['id']}/conversations/"
+                f"{first_answer['conversation_id']}"
+            )
+            assert cross_tenant_conversation.status_code == 404
 
             duplicate = client.post(
                 path,

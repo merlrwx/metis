@@ -102,3 +102,56 @@ class SearchResultView(BaseModel):
 class SearchView(BaseModel):
     embedding_model: str
     results: list[SearchResultView]
+
+
+class ChatRequest(BaseModel):
+    message: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
+    ]
+    conversation_id: uuid.UUID | None = None
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
+class CitationView(BaseModel):
+    chunk_id: uuid.UUID
+    document_id: uuid.UUID
+    document_title: str
+    source_id: uuid.UUID | None
+    source_name: str | None
+    page: int | None
+    section: str | None
+    snippet: str
+
+
+class ChatUsageView(BaseModel):
+    input_tokens: int | None
+    output_tokens: int | None
+
+
+class ChatResponse(BaseModel):
+    conversation_id: uuid.UUID
+    answer: str
+    citations: list[CitationView]
+    model_id: str | None
+    usage: ChatUsageView
+
+
+class ConversationMessageView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    role: str
+    content: str
+    citations: list[CitationView]
+    model_id: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    created_at: datetime
+
+
+class ConversationView(BaseModel):
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    title: str
+    created_at: datetime
+    messages: list[ConversationMessageView]

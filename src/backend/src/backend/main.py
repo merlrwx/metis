@@ -2,7 +2,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import uvicorn
 from botocore.exceptions import BotoCoreError
@@ -13,16 +13,23 @@ from fastapi import (
     Form,
     Header,
     HTTPException,
+    Query,
     UploadFile,
 )
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from backend import embeddings
+from backend import chat, embeddings
 from backend.database import get_session
 from backend.models import IngestionJob, Organisation
 from backend.queue import QUEUE_CONFIGURED, broker
 from backend.schemas import (
+    ChatRequest,
+    ChatResponse,
+    ChatUsageView,
+    CitationView,
+    ConversationMessageView,
+    ConversationView,
     DocumentCreate,
     DocumentView,
     JobView,
@@ -36,8 +43,8 @@ from backend.schemas import (
     TestJobCreate,
     UploadView,
 )
+from backend.services import conversations, ingestion, knowledge, rag
 from backend.services import documents as document_service
-from backend.services import ingestion, knowledge
 from backend.services import jobs as job_service
 from backend.storage import get_object_storage
 from backend.tasks import process_ingestion_job
@@ -84,7 +91,7 @@ def info() -> dict[str, str]:
     return {
         "name": "Metis",
         "description": "Grounded answers from your organisation's knowledge.",
-        "stage": "vector-search",
+        "stage": "grounded-chat",
     }
 
 
@@ -280,6 +287,127 @@ def search_documents(
                 score=hit.score,
             )
             for hit in hits
+        ],
+    )
+
+
+def citation_view(hit: knowledge.SearchHit) -> CitationView:
+    return CitationView(
+        chunk_id=hit.chunk.id,
+        document_id=hit.document.id,
+        document_title=hit.document.title,
+        source_id=hit.document.source_id,
+        source_name=hit.source.name if hit.source else None,
+        page=hit.chunk.page,
+        section=hit.chunk.section,
+        snippet=hit.chunk.content,
+    )
+
+
+@app.post("/api/organisations/{organisation_id}/chat", response_model=ChatResponse)
+def chat_with_knowledge(
+    organisation_id: UUID,
+    payload: ChatRequest,
+    session: Annotated[Session, Depends(get_session)],
+) -> ChatResponse:
+    if session.get(Organisation, organisation_id) is None:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+
+    conversation = None
+    conversation_id = payload.conversation_id or uuid4()
+    if payload.conversation_id is not None:
+        conversation = conversations.get_conversation(
+            session, organisation_id, payload.conversation_id
+        )
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        history = conversations.get_history(
+            session,
+            organisation_id,
+            conversation_id,
+            rag.MAX_HISTORY_MESSAGES,
+        )
+    else:
+        history = []
+
+    try:
+        embedding_provider = embeddings.get_embedding_provider()
+        query_embedding = embedding_provider.embed_query(payload.message)
+    except embeddings.InvalidEmbeddingInput as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except (RuntimeError, OSError) as error:
+        raise HTTPException(
+            status_code=503, detail="Embedding provider is unavailable"
+        ) from error
+
+    hits = knowledge.search_chunks(
+        session,
+        organisation_id,
+        query_embedding,
+        embedding_provider.model_id,
+        payload.top_k,
+    )
+    session.commit()
+    has_evidence = any(hit.score >= rag.MIN_RETRIEVAL_SCORE for hit in hits)
+    try:
+        chat_provider = chat.get_chat_provider() if has_evidence else None
+        grounded = rag.answer_question(payload.message, history, hits, chat_provider)
+    except chat.ChatProviderError as error:
+        raise HTTPException(
+            status_code=503, detail="Chat provider is unavailable"
+        ) from error
+
+    citations = [citation_view(hit) for hit in grounded.citations]
+    completion = grounded.completion
+    conversations.save_turn(
+        session,
+        organisation_id,
+        conversation,
+        conversation_id,
+        payload.message,
+        grounded.content,
+        [citation.model_dump(mode="json") for citation in citations],
+        completion.model_id if completion else None,
+        completion.input_tokens if completion else None,
+        completion.output_tokens if completion else None,
+    )
+    return ChatResponse(
+        conversation_id=conversation_id,
+        answer=grounded.content,
+        citations=citations,
+        model_id=completion.model_id if completion else None,
+        usage=ChatUsageView(
+            input_tokens=completion.input_tokens if completion else None,
+            output_tokens=completion.output_tokens if completion else None,
+        ),
+    )
+
+
+@app.get(
+    "/api/organisations/{organisation_id}/conversations/{conversation_id}",
+    response_model=ConversationView,
+)
+def get_conversation(
+    organisation_id: UUID,
+    conversation_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> ConversationView:
+    conversation = conversations.get_conversation(
+        session, organisation_id, conversation_id
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return ConversationView(
+        id=conversation.id,
+        organisation_id=conversation.organisation_id,
+        title=conversation.title,
+        created_at=conversation.created_at,
+        messages=[
+            ConversationMessageView.model_validate(message)
+            for message in conversations.list_messages(
+                session, organisation_id, conversation_id, limit
+            )
         ],
     )
 

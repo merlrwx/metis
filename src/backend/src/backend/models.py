@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -224,6 +225,9 @@ class Conversation(Timestamped, Base):
 class Message(Timestamped, Base):
     __tablename__ = "messages"
     __table_args__ = (
+        UniqueConstraint(
+            "conversation_id", "message_index", name="uq_message_conversation_index"
+        ),
         CheckConstraint(
             "role IN ('system', 'user', 'assistant')", name="ck_message_role"
         ),
@@ -238,5 +242,12 @@ class Message(Timestamped, Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     organisation_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     conversation_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    message_index: Mapped[int] = mapped_column(Integer, nullable=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(nullable=False)
+    citations: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON_OBJECT, nullable=False, default=list
+    )
+    model_id: Mapped[str | None] = mapped_column(String(255))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)

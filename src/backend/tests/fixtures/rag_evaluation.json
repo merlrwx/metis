@@ -1,0 +1,20 @@
+[
+  {
+    "id": "medication-incident",
+    "question": "What must staff do after a medication incident?",
+    "relevant": "After a medication incident, staff must record it promptly and notify the clinical supervisor.",
+    "distractor": "Staff must request annual leave from their manager at least two weeks in advance."
+  },
+  {
+    "id": "equipment-repair",
+    "question": "What are the inspection steps for equipment after repair?",
+    "relevant": "After repair, inspect equipment before returning it to service and record the inspection date.",
+    "distractor": "Medication incidents are recorded and reported to a clinical supervisor."
+  },
+  {
+    "id": "workstation-access",
+    "question": "Who approves requests for workstation access?",
+    "relevant": "The employee's manager approves workstation access after confirming the worker's role.",
+    "distractor": "Equipment inspection occurs after every repair before it is returned to service."
+  }
+]

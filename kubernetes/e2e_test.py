@@ -198,7 +198,7 @@ def test_backend(base_url):
     require(api(base_url, "/health") == {"status": "ok"}, "Backend health check failed")
     info = api(base_url, "/api/info")
     require(info["name"] == "Metis", "Wrong backend application")
-    require(info["stage"] == "vector-search", "Wrong application stage")
+    require(info["stage"] == "grounded-chat", "Wrong application stage")
     api(base_url, "/api/timer", expected_status=404)
     api(base_url, "/api/sessions", expected_status=404)
     organisation = api(
