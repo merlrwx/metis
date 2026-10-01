@@ -1,0 +1,31 @@
+name: metis
+
+services:
+  backend:
+    image: metis-backend:alpine
+    build:
+      context: ./src/backend
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - /app/.venv/bin/python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  frontend:
+    image: metis-frontend:alpine
+    build:
+      context: ./src/frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "8501:8501"

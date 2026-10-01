@@ -1,0 +1,22 @@
+[project]
+name = "metis-frontend"
+version = "0.1.0"
+description = "Streamlit frontend for Metis organisation knowledge"
+readme = "README.md"
+authors = [
+    { name = "Jason Standen", email = "jason@merl.one" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "streamlit>=1.37.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.9",
+]

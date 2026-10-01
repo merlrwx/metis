@@ -1,0 +1,33 @@
+{
+  "separate-pull-requests": true,
+  "packages": {
+    "src/backend": {
+      "release-type": "python",
+      "package-name": "metis-backend",
+      "component": "backend",
+      "include-component-in-tag": true,
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "uv.lock",
+          "jsonpath": "$.package[?(@.name.value=='metis-backend')].version"
+        }
+      ]
+    },
+    "src/frontend": {
+      "release-type": "python",
+      "package-name": "metis-frontend",
+      "component": "frontend",
+      "include-component-in-tag": true,
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "uv.lock",
+          "jsonpath": "$.package[?(@.name.value=='metis-frontend')].version"
+        }
+      ]
+    }
+  }
+}

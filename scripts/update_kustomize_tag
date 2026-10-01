@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""Update one image tag in a Kustomize file without external dependencies."""
+
+import re
+import sys
+from pathlib import Path
+
+
+def main() -> None:
+    if len(sys.argv) != 4:
+        raise SystemExit(
+            f"Usage: {sys.argv[0]} <tag> <kustomization-file> <image-name>"
+        )
+
+    tag, filename, image = sys.argv[1:]
+    path = Path(filename)
+    text = path.read_text()
+    lines = text.splitlines(keepends=True)
+    matches = [
+        i
+        for i, line in enumerate(lines)
+        if line == f"  - name: {image}\n" or line == f"  - name: {image}"
+    ]
+
+    if len(matches) != 1:
+        raise SystemExit(
+            f"Expected one image named {image!r} in {path}, found {len(matches)}"
+        )
+
+    start = matches[0]
+    end = next(
+        (
+            i
+            for i in range(start + 1, len(lines))
+            if re.match(r"^  - name:|^[^ ]", lines[i])
+        ),
+        len(lines),
+    )
+    tag_lines = [
+        i for i in range(start + 1, end) if re.match(r"^    newTag:", lines[i])
+    ]
+    if len(tag_lines) != 1:
+        raise SystemExit(f"Expected one newTag for image {image!r} in {path}")
+
+    lines[tag_lines[0]] = (
+        f"    newTag: {tag}\n"
+        if lines[tag_lines[0]].endswith("\n")
+        else f"    newTag: {tag}"
+    )
+    path.write_text("".join(lines))
+
+
+if __name__ == "__main__":
+    main()

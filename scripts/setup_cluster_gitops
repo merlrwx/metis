@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Colors for better output
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Check for required environment variables
+required_vars=("DEVPOD_WORKSPACE_ID" "GITUSER" "GITOPS_REPO")
+missing_vars=()
+
+for var in "${required_vars[@]}"; do
+  if [ -z "${!var:-}" ]; then
+    missing_vars+=("$var")
+  fi
+done
+
+if [ ${#missing_vars[@]} -ne 0 ]; then
+  echo -e "${RED}Error: The following required environment variables are not set:${NC}"
+  for var in "${missing_vars[@]}"; do
+    echo "  - $var"
+  done
+  echo "Please set these variables before running this script."
+  exit 1
+fi
+
+# Script and project directories
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="$(dirname "$SCRIPT_DIR")"
+CLUSTER_NAME="metis-cluster"
+K3D_CONFIG="$BASE_DIR/kubernetes/k3d-config.yaml"
+KEY_DIR="/workspaces/$DEVPOD_WORKSPACE_ID/dev-keys"
+BACKEND_IMAGE="ghcr.io/$GITUSER/metis-api:dev"
+FRONTEND_IMAGE="ghcr.io/$GITUSER/metis-web:dev"
+
+echo -e "${GREEN}Metis - Kubernetes GitOps Deployment Helper${NC}"
+echo -e "${YELLOW}This script will set up a k3d cluster and configure GitOps for the Metis.${NC}"
+echo ""
+
+# Check for required tools
+check_dependency() {
+  if ! command -v "$1" &>/dev/null; then
+    echo -e "${RED}Error: $1 is not installed. Please install it before proceeding.${NC}"
+    exit 1
+  fi
+}
+
+echo "Checking dependencies..."
+check_dependency k3d
+check_dependency kubectl
+check_dependency docker
+check_dependency flux
+echo -e "${GREEN}All dependencies are installed.${NC}"
+echo ""
+
+# Create the cluster if it doesn't exist; reuse it otherwise.
+if k3d cluster list | awk 'NR > 1 { print $1 }' | grep -Fxq "$CLUSTER_NAME"; then
+  echo -e "${YELLOW}Using existing cluster $CLUSTER_NAME.${NC}"
+else
+  echo "Creating k3d cluster using config file..."
+  k3d cluster create --config "$K3D_CONFIG"
+  echo -e "${GREEN}Cluster created successfully!${NC}"
+fi
+
+# Configure kubectl to use the cluster
+echo "Configuring kubectl to use the cluster..."
+kubectl config use-context k3d-"$CLUSTER_NAME"
+kubectl wait --for=condition=Ready nodes --all --timeout=120s
+
+# Build and load the images under the names used by the GitOps kustomization.
+echo "Building application images..."
+docker build --tag "$BACKEND_IMAGE" --file "$BASE_DIR/src/backend/Dockerfile" "$BASE_DIR/src/backend"
+docker build --tag "$FRONTEND_IMAGE" --file "$BASE_DIR/src/frontend/Dockerfile" "$BASE_DIR/src/frontend"
+k3d image import "$BACKEND_IMAGE" --cluster "$CLUSTER_NAME" --mode direct
+k3d image import "$FRONTEND_IMAGE" --cluster "$CLUSTER_NAME" --mode direct
+
+# Check for deploy keys
+if [ ! -f "$KEY_DIR/metis_gitops_deploy_key" ]; then
+  echo -e "${YELLOW}Deploy keys not found.${NC}"
+  if [ -x "$BASE_DIR/scripts/setup_deploy_key" ]; then
+    echo "Running setup_deploy_key script..."
+    bash "$BASE_DIR/scripts/setup_deploy_key"
+  else
+    echo -e "${RED}Cannot find setup_deploy_key script. Please generate deploy keys manually.${NC}"
+    exit 1
+  fi
+fi
+
+# Setup GitOps with Flux
+echo "Setting up GitOps with Flux..."
+bash "$SCRIPT_DIR/setup_gitops"
+echo -e "${GREEN}GitOps setup completed!${NC}"
+
+# Wait for Flux to be ready
+echo "Waiting for Flux controllers to be ready..."
+kubectl -n flux-system wait --for=condition=Ready pods --all --timeout=120s
+
+echo -e "${GREEN}GitOps deployment configured successfully!${NC}"
+echo "Flux will now sync and deploy the application from your GitOps repository."
+echo -e "${YELLOW}Flux will reconcile application manifests from the GitOps repository's apps/dev path.${NC}"
+
+echo -e "\nTo check the status of Flux GitOps:"
+echo -e "${YELLOW}flux get all${NC}"
+
+echo -e "\nTo check deployment status:"
+echo -e "${YELLOW}kubectl get pods -n metis${NC}"
+
+echo -e "\nTo delete the cluster when finished:"
+echo -e "${YELLOW}k3d cluster delete $CLUSTER_NAME${NC}"

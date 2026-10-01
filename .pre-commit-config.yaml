@@ -1,0 +1,17 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9
+    hooks:
+      - id: ruff
+        args: [--no-fix, .]
+        pass_filenames: false
+        always_run: true
+      - id: ruff-format
+        args: [--check, .]
+        pass_filenames: false
+        always_run: true
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v1.17.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]

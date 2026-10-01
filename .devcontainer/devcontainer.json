@@ -1,0 +1,19 @@
+{
+  "build": {
+    "context": "..",
+    "dockerfile": "Dockerfile"
+  },
+  "postCreateCommand": "bash scripts/setup",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2.17.0": {
+      "moby": false
+    }
+  },
+  "forwardPorts": [
+    8000,
+    8501,
+    22111,
+    22112
+  ],
+  "name": "Metis"
+}

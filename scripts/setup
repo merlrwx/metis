@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+mise trust mise.toml
+mise install
+mise exec -- uv sync --locked --project src/backend
+mise exec -- uv sync --locked --project src/frontend
+mise exec -- uv sync --locked --project kubernetes
+mise exec -- bash scripts/setup_project

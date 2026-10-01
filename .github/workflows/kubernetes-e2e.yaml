@@ -1,0 +1,57 @@
+name: Kubernetes E2E Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check_paths:
+    runs-on: ubuntu-24.04
+    outputs:
+      should_run: ${{ steps.filter.outputs.e2e }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Filter E2E paths
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            e2e:
+              - 'src/frontend/**'
+              - 'src/backend/**'
+              - 'kubernetes/**'
+              - '.github/workflows/kubernetes-e2e.yaml'
+
+  e2e:
+    name: Kubernetes end-to-end tests
+    needs: check_paths
+    if: needs.check_paths.outputs.should_run == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: 0.12.19
+
+      - name: Install Python
+        run: uv python install 3.13.15
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Install k3d
+        run: curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG=v5.8.3 bash
+
+      - name: Run Kubernetes end-to-end tests
+        run: uv run --locked --project ./kubernetes python ./kubernetes/e2e_test.py

@@ -1,0 +1,80 @@
+name: Update GitOps Repository
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      image:
+        required: true
+        type: string
+    secrets:
+      METIS_RELEASE_TOKEN:
+        required: true
+      GITOPS_DEPLOY_KEY:
+        required: true
+
+concurrency:
+  group: update-gitops-dev
+  cancel-in-progress: false
+
+jobs:
+  update-gitops:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout actions repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: actions-repo
+
+      - name: Checkout GitOps repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: merlrwx/metis-gitops
+          ref: main
+          path: gitops
+          ssh-key: ${{ secrets.GITOPS_DEPLOY_KEY }}
+
+      - name: Update dev image tag
+        env:
+          TAG: ${{ inputs.tag }}
+          IMAGE: ${{ inputs.image }}
+        run: python actions-repo/scripts/update_kustomize_tag "$TAG" gitops/apps/dev/kustomization.yaml "$IMAGE"
+
+      - name: Commit and push GitOps change
+        working-directory: gitops
+        env:
+          IMAGE: ${{ inputs.image }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if git diff --quiet -- apps/dev/kustomization.yaml; then
+            echo "GitOps already uses $IMAGE:$TAG"
+            exit 0
+          fi
+          git config user.name "GitOps Bot"
+          git config user.email "gitops-bot@users.noreply.github.com"
+          git add apps/dev/kustomization.yaml
+          git commit -m "chore(images): update $IMAGE to $TAG"
+          git push origin HEAD:main
+
+      - name: Update prod image tag
+        env:
+          TAG: ${{ inputs.tag }}
+          IMAGE: ${{ inputs.image }}
+        run: python actions-repo/scripts/update_kustomize_tag "$TAG" gitops/apps/prod/kustomization.yaml "$IMAGE"
+
+      - name: Create prod image update pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.METIS_RELEASE_TOKEN }}
+          path: gitops
+          base: main
+          branch: gitops/update-tag-${{ inputs.image }}
+          delete-branch: true
+          commit-message: "chore(images): update prod ${{ inputs.image }} to ${{ inputs.tag }}"
+          committer: GitOps Bot <gitops-bot@users.noreply.github.com>
+          author: GitOps Bot <gitops-bot@users.noreply.github.com>
+          title: "Update prod ${{ inputs.image }} image to ${{ inputs.tag }}"
+          body: |
+            Promote the ${{ inputs.image }} image to `${{ inputs.tag }}` in `apps/prod`.

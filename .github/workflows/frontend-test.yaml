@@ -1,0 +1,103 @@
+name: Frontend Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check_paths:
+    runs-on: ubuntu-24.04
+    outputs:
+      should_run: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Filter frontend paths
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'src/frontend/**'
+              - '.github/workflows/frontend-test.yaml'
+              - '.pre-commit-config.yaml'
+              - 'ruff.toml'
+              - 'scripts/verify'
+              - 'mise.toml'
+              - '.devcontainer/**'
+
+  checks:
+    name: Frontend checks
+    needs: check_paths
+    if: needs.check_paths.outputs.should_run == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: src/frontend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: 0.12.19
+
+      - name: Install Python
+        run: uv python install 3.13.15
+
+      - name: Install locked dependencies
+        run: uv sync --locked
+
+      - name: Run tests with coverage
+        run: uv run --locked pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80
+
+      - name: Upload coverage report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: frontend-coverage-report
+          path: src/frontend/coverage.xml
+          retention-days: 7
+
+      - name: Coverage Report
+        if: ${{ always() && hashFiles('src/frontend/coverage.xml') != '' }}
+        uses: irongut/CodeCoverageSummary@51cc3a756ddcd398d447c044c02cb6aa83fdae95 # v1.3.0
+        with:
+          filename: src/frontend/coverage.xml
+          badge: true
+          format: markdown
+          output: both
+
+      - name: Add Coverage PR Comment
+        if: ${{ always() && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('code-coverage-results.md') != '' }}
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: frontend-test-coverage
+          recreate: true
+          path: code-coverage-results.md
+
+      - name: Run pre-commit checks
+        run: cd ../.. && uvx --from pre-commit==4.6.2 pre-commit run --all-files
+
+      - name: Build frontend image
+        run: docker build --progress=plain --tag metis-frontend:alpine .
+
+      - name: Scan frontend image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: metis-frontend:alpine
+          version: v0.74.0
+          format: table
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          cache: true

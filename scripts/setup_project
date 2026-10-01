@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${DEVPOD:-false}" == "true" ]]; then
+  workspace="$(cd "$(dirname "$0")/.." && pwd)"
+  git config --global --add safe.directory "$workspace"
+  pre-commit install
+  pre-commit install --hook-type commit-msg
+fi
