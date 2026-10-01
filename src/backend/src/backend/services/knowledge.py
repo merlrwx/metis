@@ -1,9 +1,18 @@
 import uuid
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.models import Document, Organisation, Source
+from backend.models import Chunk, Document, DocumentVersion, Organisation, Source
+
+
+@dataclass(frozen=True)
+class SearchHit:
+    chunk: Chunk
+    document: Document
+    source: Source | None
+    score: float
 
 
 def create_organisation(session: Session, name: str) -> Organisation:
@@ -85,3 +94,54 @@ def get_document(
             Document.id == document_id,
         )
     )
+
+
+def search_chunks(
+    session: Session,
+    organisation_id: uuid.UUID,
+    query_embedding: list[float],
+    embedding_model: str,
+    limit: int,
+    source_id: uuid.UUID | None = None,
+    document_id: uuid.UUID | None = None,
+) -> list[SearchHit]:
+    distance = Chunk.embedding.cosine_distance(query_embedding)
+    statement = (
+        select(Chunk, Document, Source, distance.label("distance"))
+        .join(
+            DocumentVersion,
+            (DocumentVersion.id == Chunk.document_version_id)
+            & (DocumentVersion.organisation_id == Chunk.organisation_id),
+        )
+        .join(
+            Document,
+            (Document.id == DocumentVersion.document_id)
+            & (Document.organisation_id == Chunk.organisation_id),
+        )
+        .outerjoin(
+            Source,
+            (Source.id == Document.source_id)
+            & (Source.organisation_id == Document.organisation_id),
+        )
+        .where(
+            Chunk.organisation_id == organisation_id,
+            Document.organisation_id == organisation_id,
+            Document.current_version_id == Chunk.document_version_id,
+            Chunk.embedding_model == embedding_model,
+        )
+    )
+    if source_id is not None:
+        statement = statement.where(Document.source_id == source_id)
+    if document_id is not None:
+        statement = statement.where(Document.id == document_id)
+
+    rows = session.execute(statement.order_by(distance).limit(limit))
+    return [
+        SearchHit(
+            chunk=chunk,
+            document=document,
+            source=source,
+            score=1 - distance_value,
+        )
+        for chunk, document, source, distance_value in rows
+    ]

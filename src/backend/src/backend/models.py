@@ -2,12 +2,14 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from pgvector.sqlalchemy import VECTOR
 from sqlalchemy import (
     JSON,
     CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     String,
     Text,
     UniqueConstraint,
@@ -16,6 +18,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from backend.embeddings import EMBEDDING_DIMENSIONS
 
 JSON_OBJECT = JSON().with_variant(JSONB, "postgresql")
 
@@ -162,6 +166,43 @@ class IngestionJob(Timestamped, Base):
     error: Mapped[str | None] = mapped_column(String(4096))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Chunk(Timestamped, Base):
+    __tablename__ = "chunks"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_version_id", "chunk_index", name="uq_chunk_version_index"
+        ),
+        ForeignKeyConstraint(
+            ["document_version_id", "organisation_id"],
+            ["document_versions.id", "document_versions.organisation_id"],
+            ondelete="CASCADE",
+            name="fk_chunk_version_organisation",
+        ),
+        Index(
+            "ix_chunks_organisation_id_document_version_id",
+            "organisation_id",
+            "document_version_id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    organisation_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    document_version_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    chunk_index: Mapped[int] = mapped_column(nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    start_offset: Mapped[int] = mapped_column(nullable=False)
+    end_offset: Mapped[int] = mapped_column(nullable=False)
+    page: Mapped[int | None] = mapped_column()
+    section: Mapped[str | None] = mapped_column(String(512))
+    chunk_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSON_OBJECT, nullable=False, default=dict
+    )
+    embedding_model: Mapped[str] = mapped_column(String(255), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(
+        VECTOR(EMBEDDING_DIMENSIONS), nullable=False
+    )
 
 
 class Conversation(Timestamped, Base):

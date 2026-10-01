@@ -198,7 +198,7 @@ def test_backend(base_url):
     require(api(base_url, "/health") == {"status": "ok"}, "Backend health check failed")
     info = api(base_url, "/api/info")
     require(info["name"] == "Metis", "Wrong backend application")
-    require(info["stage"] == "async-processing", "Wrong application stage")
+    require(info["stage"] == "vector-search", "Wrong application stage")
     api(base_url, "/api/timer", expected_status=404)
     api(base_url, "/api/sessions", expected_status=404)
     organisation = api(
@@ -241,6 +241,22 @@ def test_backend(base_url):
     require(
         uploaded_document["ingestion_status"] == "indexed",
         "Document API did not expose indexed status",
+    )
+    results = api(
+        base_url,
+        f"/api/organisations/{organisation['id']}/search",
+        "POST",
+        {
+            "query": "record medication incidents promptly",
+            "source_id": upload["document"]["source_id"],
+            "document_id": upload["document"]["id"],
+            "limit": 1,
+        },
+    )
+    require(
+        results["results"]
+        and results["results"][0]["document_id"] == upload["document"]["id"],
+        "Vector search did not return the uploaded policy",
     )
     headers = {"Idempotency-Key": "metis-e2e-job"}
     job = api(

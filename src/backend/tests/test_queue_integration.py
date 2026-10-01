@@ -174,6 +174,33 @@ def test_uploaded_pdf_is_extracted_and_reuses_its_indexed_version(sample_pdf):
             ).json()
             assert document["ingestion_status"] == "indexed"
 
+            search = client.post(
+                f"/api/organisations/{organisation['id']}/search",
+                json={
+                    "query": "What do we do after a medication incident?",
+                    "source_id": upload["document"]["source_id"],
+                    "document_id": upload["document"]["id"],
+                    "limit": 1,
+                },
+            )
+            assert search.status_code == 200, search.text
+            assert (
+                search.json()["results"][0]["document_id"] == upload["document"]["id"]
+            )
+            assert (
+                "Medication incident policy" in search.json()["results"][0]["content"]
+            )
+
+            other_organisation = client.post(
+                "/api/organisations", json={"name": "No incident policy access"}
+            ).json()
+            cross_tenant_search = client.post(
+                f"/api/organisations/{other_organisation['id']}/search",
+                json={"query": "Medication incident policy"},
+            )
+            assert cross_tenant_search.status_code == 200
+            assert cross_tenant_search.json()["results"] == []
+
             duplicate = client.post(
                 path,
                 files={

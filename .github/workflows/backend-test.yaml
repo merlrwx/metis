@@ -44,7 +44,7 @@ jobs:
         working-directory: src/backend
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_DB: metis
           POSTGRES_USER: metis
@@ -74,6 +74,7 @@ jobs:
       METIS_QUEUE_TESTS: "1"
       OBJECT_STORAGE_BACKEND: local
       OBJECT_STORAGE_LOCAL_DIR: /tmp/metis-objects
+      EMBEDDING_PROVIDER: hashing
 
     steps:
       - name: Check out repository

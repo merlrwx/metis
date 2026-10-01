@@ -2,12 +2,12 @@ import asyncio
 import os
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
-from backend import database
-from backend.models import DocumentVersion
+from backend import database, embeddings
+from backend.models import Chunk, DocumentVersion
 from backend.queue import broker
-from backend.services import ingestion, jobs
+from backend.services import chunking, ingestion, jobs
 from backend.storage import get_object_storage
 
 
@@ -63,6 +63,17 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
             extracted = await asyncio.to_thread(
                 ingestion.extract_document, filename, mime_type, data
             )
+            text_chunks = chunking.split_document(extracted.text, extracted.metadata)
+            if not text_chunks:
+                raise RuntimeError("Document extraction produced no text chunks")
+            provider = embeddings.get_embedding_provider()
+            vectors = await asyncio.to_thread(
+                provider.embed_documents, [chunk.content for chunk in text_chunks]
+            )
+            if len(vectors) != len(text_chunks):
+                raise RuntimeError(
+                    "Embedding provider returned the wrong number of vectors"
+                )
             with database.SessionLocal() as session:
                 version = session.scalar(
                     select(DocumentVersion).where(
@@ -74,6 +85,28 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
                     raise RuntimeError("Ingestion document version was not found")
                 version.extracted_text = extracted.text
                 version.extraction_metadata = extracted.metadata
+                session.execute(
+                    delete(Chunk).where(
+                        Chunk.organisation_id == parsed_organisation_id,
+                        Chunk.document_version_id == document_version_id,
+                    )
+                )
+                session.add_all(
+                    Chunk(
+                        organisation_id=parsed_organisation_id,
+                        document_version_id=document_version_id,
+                        chunk_index=index,
+                        content=chunk.content,
+                        start_offset=chunk.start_offset,
+                        end_offset=chunk.end_offset,
+                        page=chunk.page,
+                        section=chunk.section,
+                        chunk_metadata=chunk.metadata,
+                        embedding_model=provider.model_id,
+                        embedding=vector,
+                    )
+                    for index, (chunk, vector) in enumerate(zip(text_chunks, vectors))
+                )
                 jobs.mark_indexed(session, parsed_organisation_id, parsed_job_id)
     except Exception as error:
         with database.SessionLocal() as session:

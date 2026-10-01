@@ -6,12 +6,21 @@ from uuid import UUID
 
 import uvicorn
 from botocore.exceptions import BotoCoreError
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    UploadFile,
+)
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from backend import embeddings
 from backend.database import get_session
-from backend.models import IngestionJob
+from backend.models import IngestionJob, Organisation
 from backend.queue import QUEUE_CONFIGURED, broker
 from backend.schemas import (
     DocumentCreate,
@@ -19,6 +28,9 @@ from backend.schemas import (
     JobView,
     OrganisationCreate,
     OrganisationView,
+    SearchRequest,
+    SearchResultView,
+    SearchView,
     SourceCreate,
     SourceView,
     TestJobCreate,
@@ -72,7 +84,7 @@ def info() -> dict[str, str]:
     return {
         "name": "Metis",
         "description": "Grounded answers from your organisation's knowledge.",
-        "stage": "async-processing",
+        "stage": "vector-search",
     }
 
 
@@ -224,6 +236,52 @@ def list_documents(
         document_view(session, document)
         for document in knowledge.list_documents(session, organisation_id)
     ]
+
+
+@app.post("/api/organisations/{organisation_id}/search", response_model=SearchView)
+def search_documents(
+    organisation_id: UUID,
+    payload: SearchRequest,
+    session: Annotated[Session, Depends(get_session)],
+) -> SearchView:
+    if session.get(Organisation, organisation_id) is None:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+    try:
+        provider = embeddings.get_embedding_provider()
+        query_embedding = provider.embed_query(payload.query)
+    except embeddings.InvalidEmbeddingInput as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except (RuntimeError, OSError) as error:
+        raise HTTPException(
+            status_code=503, detail="Embedding provider is unavailable"
+        ) from error
+
+    hits = knowledge.search_chunks(
+        session,
+        organisation_id,
+        query_embedding,
+        provider.model_id,
+        payload.limit,
+        payload.source_id,
+        payload.document_id,
+    )
+    return SearchView(
+        embedding_model=provider.model_id,
+        results=[
+            SearchResultView(
+                chunk_id=hit.chunk.id,
+                document_id=hit.document.id,
+                document_title=hit.document.title,
+                source_id=hit.document.source_id,
+                source_name=hit.source.name if hit.source else None,
+                content=hit.chunk.content,
+                page=hit.chunk.page,
+                section=hit.chunk.section,
+                score=hit.score,
+            )
+            for hit in hits
+        ],
+    )
 
 
 @app.post("/api/jobs/test", response_model=JobView, status_code=202)

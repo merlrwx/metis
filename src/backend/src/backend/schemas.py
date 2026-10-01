@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 
 class OrganisationCreate(BaseModel):
@@ -76,3 +76,29 @@ class JobView(BaseModel):
 class UploadView(BaseModel):
     document: DocumentView
     job: JobView
+
+
+class SearchRequest(BaseModel):
+    query: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
+    ]
+    source_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+class SearchResultView(BaseModel):
+    chunk_id: uuid.UUID
+    document_id: uuid.UUID
+    document_title: str
+    source_id: uuid.UUID | None
+    source_name: str | None
+    content: str
+    page: int | None
+    section: str | None
+    score: float
+
+
+class SearchView(BaseModel):
+    embedding_model: str
+    results: list[SearchResultView]

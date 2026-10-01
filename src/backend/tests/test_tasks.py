@@ -3,7 +3,7 @@ import uuid
 
 import pytest
 from backend.main import app
-from backend.models import Document, DocumentVersion
+from backend.models import Chunk, Document, DocumentVersion
 from backend.services import documents as document_service
 from backend.services import jobs
 from backend.storage import LocalObjectStorage
@@ -99,6 +99,12 @@ def test_document_job_extracts_text_and_marks_version_indexed(
         assert version.extraction_metadata["pages"] == [
             {"page": 1, "start": 0, "end": 26}
         ]
+        chunks = session.query(Chunk).filter_by(document_version_id=version.id).all()
+        assert len(chunks) == 1
+        assert chunks[0].content == "Medication incident policy"
+        assert chunks[0].page == 1
+        assert len(chunks[0].embedding) == 1536
+        assert chunks[0].embedding_model == "metis:feature-hash-v1"
 
 
 def test_document_worker_does_not_read_another_organisations_job(tmp_path, sample_pdf):
@@ -132,3 +138,4 @@ def test_document_worker_does_not_read_another_organisations_job(tmp_path, sampl
         assert job.status == "queued"
         assert job.attempts == 0
         assert version.extracted_text is None
+        assert session.query(Chunk).count() == 0

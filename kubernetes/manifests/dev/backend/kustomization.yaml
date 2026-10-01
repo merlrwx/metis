@@ -24,6 +24,8 @@ patches:
             value: local
           - name: OBJECT_STORAGE_LOCAL_DIR
             value: /data/metis-objects
+          - name: EMBEDDING_PROVIDER
+            value: hashing
       - op: add
         path: /spec/template/spec/initContainers
         value:

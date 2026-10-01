@@ -29,6 +29,8 @@ spec:
               value: local
             - name: OBJECT_STORAGE_LOCAL_DIR
               value: /data/metis-objects
+            - name: EMBEDDING_PROVIDER
+              value: hashing
           volumeMounts:
             - name: metis-objects
               mountPath: /data/metis-objects

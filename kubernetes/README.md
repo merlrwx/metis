@@ -14,4 +14,4 @@ For interactive local development, `mise run k8s-setup-local` builds and deploys
 
 GitOps tools target the separate `merlrwx/metis-gitops` repository and require its credentials. They create resources and bootstrap Flux only when invoked. See the root README for setup prerequisites; they are not part of normal verification.
 
-The dev overlay shares a temporary host directory mounted into each k3d node for uploaded objects. That path is only for the disposable local environment; use the S3-compatible backend and deployment-specific credentials for a multi-node deployment. PostgreSQL/pgvector retrieval and production storage provisioning remain in later phases.
+The dev overlay runs PostgreSQL with pgvector and shares a temporary host directory mounted into each k3d node for uploaded objects. Its deterministic hashing provider exercises chunk storage and exact retrieval without external model calls. That path and provider are for disposable local development; configure production object storage and embeddings separately.

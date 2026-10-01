@@ -14,6 +14,7 @@ trap 'rm -rf "$docker_config" "$storage_dir"' EXIT
 export DOCKER_CONFIG="$docker_config"
 export OBJECT_STORAGE_BACKEND=local
 export OBJECT_STORAGE_LOCAL_DIR="$storage_dir"
+export EMBEDDING_PROVIDER=hashing
 mise exec -- docker compose up -d --wait database redis
 mise exec -- uv run --locked --project src/backend alembic -c src/backend/alembic.ini upgrade head
 mise exec -- uv run --locked --project src/backend pytest src/backend/tests --cov=backend --cov-report=term-missing --cov-fail-under=80

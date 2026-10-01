@@ -15,7 +15,7 @@ services:
       retries: 10
 
   database:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_DB: metis
       POSTGRES_USER: metis
@@ -44,6 +44,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       OBJECT_STORAGE_BACKEND: local
       OBJECT_STORAGE_LOCAL_DIR: /data/metis-objects
+      EMBEDDING_PROVIDER: hashing
     ports:
       - "8000:8000"
     volumes:
@@ -76,6 +77,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       OBJECT_STORAGE_BACKEND: local
       OBJECT_STORAGE_LOCAL_DIR: /data/metis-objects
+      EMBEDDING_PROVIDER: hashing
     volumes:
       - metis-objects:/data/metis-objects
 

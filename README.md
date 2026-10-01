@@ -2,9 +2,9 @@
 
 Metis will let organisations upload internal knowledge and ask questions with citations to the original documents. The implementation plan is in [plans/plan1.md](plans/plan1.md).
 
-This starting milestone implements the application and delivery foundation from Phase 0. It reuses [devops-app](https://github.com/merlrwx/devops-app): independent uv projects, FastAPI, Streamlit, mise, multi-stage non-root Docker images, Ruff/pre-commit, pytest coverage, Trivy, Release Please, GHCR, k3d and Flux setup tools.
+The application follows the delivery foundation established in Phase 0 and reuses [devops-app](https://github.com/merlrwx/devops-app): independent uv projects, FastAPI, Streamlit, mise, multi-stage non-root Docker images, Ruff/pre-commit, pytest coverage, Trivy, Release Please, GHCR, k3d and Flux setup tools.
 
-The current milestone adds PostgreSQL-backed tenant metadata, a Redis Streams worker using Taskiq, and asynchronous document ingestion. Organisations can upload PDF, DOCX, TXT, or Markdown files; the API validates and stores each version, and the worker extracts normalized text with page or section offsets. Retrieval, authentication, and grounded chat follow in later phases.
+The current milestone adds PostgreSQL-backed tenant metadata, a Redis Streams worker using Taskiq, document ingestion, and exact vector retrieval with pgvector. Organisations can upload PDF, DOCX, TXT, or Markdown files; the worker extracts text, splits it into overlapping chunks, and stores 1536-dimensional embeddings with page or section offsets. Search applies organisation, source, document, and current-version filters. Authentication and grounded chat follow in later phases.
 
 ## Development with DevPod
 
@@ -25,9 +25,11 @@ DATABASE_URL=postgresql+psycopg://metis:metis-local-only@localhost:5432/metis \
   uv run --locked --project src/backend alembic -c src/backend/alembic.ini upgrade head
 DATABASE_URL=postgresql+psycopg://metis:metis-local-only@localhost:5432/metis \
 REDIS_URL=redis://localhost:6379/0 \
+EMBEDDING_PROVIDER=hashing \
   uv run --locked --project src/backend metis-api
 DATABASE_URL=postgresql+psycopg://metis:metis-local-only@localhost:5432/metis \
 REDIS_URL=redis://localhost:6379/0 \
+EMBEDDING_PROVIDER=hashing \
 uv run --locked --project src/backend metis-worker
 ```
 
@@ -37,13 +39,18 @@ Run Streamlit in another terminal with `uv run --locked --project src/frontend s
 ORGANISATION_ID=your-org-uuid
 curl -F 'file=@policy.pdf' \
   "http://localhost:8000/api/organisations/${ORGANISATION_ID}/documents/upload"
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"query":"medication incident","limit":5}' \
+  "http://localhost:8000/api/organisations/${ORGANISATION_ID}/search"
 ```
 
 Reuse an `Idempotency-Key` header with `POST /api/jobs/test` to retrieve the same test job.
 
+Compose, k3d development, and CI use the deterministic `hashing` embedding provider; it is for local retrieval checks and is not a semantic model. For semantic embeddings, configure an OpenAI-compatible embeddings endpoint with `EMBEDDING_PROVIDER=openai-compatible`, `EMBEDDING_BASE_URL` (defaults to `https://api.openai.com/v1`), `EMBEDDING_MODEL` (defaults to `text-embedding-3-small`), and `EMBEDDING_API_KEY` or `OPENAI_API_KEY`. The configured model must return 1536 values per embedding. No standard CI job calls an embedding or chat service.
+
 For an S3-compatible object store, provision the bucket first, then set `OBJECT_STORAGE_BACKEND=s3`, `S3_BUCKET`, and optionally `S3_ENDPOINT_URL` and `AWS_REGION`; provide credentials through the standard AWS environment variables or the runtime’s credential provider. Keep the local backend for tests and single-workspace development. The Dev k3d overlay mounts one temporary host directory into its nodes for disposable local testing.
 
-Alternatively, `mise exec -- bash scripts/test-postgres` applies migrations and runs backend tests against PostgreSQL. `mise exec -- bash scripts/test-queue` also runs Redis worker recovery, retries, and a PDF upload-to-indexed integration test using an isolated Redis database and temporary local object store. `docker compose up --build --wait` starts PostgreSQL, Redis, API, worker, and frontend. The default database password is local-only; set `POSTGRES_PASSWORD` for a personal deployment and do not reuse it elsewhere.
+Alternatively, `mise exec -- bash scripts/test-postgres` applies migrations and runs backend tests against PostgreSQL. `mise exec -- bash scripts/test-queue` also runs Redis worker recovery, retries, PDF upload-to-indexed, and tenant-filtered vector search checks using an isolated Redis database and temporary local object store. `docker compose up --build --wait` starts PostgreSQL with pgvector, Redis, API, worker, and frontend. The default database password is local-only; set `POSTGRES_PASSWORD` for a personal deployment and do not reuse it elsewhere.
 
 ## Verification
 
@@ -53,9 +60,9 @@ mise exec -- pre-commit run --all-files
 mise exec -- uv run --locked --project kubernetes python kubernetes/e2e_test.py
 ```
 
-`verify` checks Ruff lint and formatting, backend and frontend tests with at least 80% coverage, dependency locks, Compose configuration and rendered Kubernetes manifests. Frontend tests run Streamlit's AppTest with mocked backend responses; normal CI never calls an LLM.
+`verify` checks Ruff lint and formatting, backend and frontend tests with at least 80% coverage, dependency locks, Compose configuration and rendered Kubernetes manifests. Frontend tests run Streamlit's AppTest with mocked backend responses; normal CI uses local hashing embeddings and never calls an external model.
 
-E2E builds both Docker images and runs the Metis services in a disposable `metis-cluster` k3d cluster. It checks database migrations, tenant metadata persistence, document upload and extraction status, a queued worker job and idempotency, removed study-tracker routes, and frontend HTTP health. Successful runs delete the test cluster; failures retain it for inspection. E2E operates only on the local Docker-provider environment. See [kubernetes/README.md](kubernetes/README.md).
+E2E builds both Docker images and runs the Metis services in a disposable `metis-cluster` k3d cluster. It checks database migrations, tenant metadata persistence, document upload, chunk extraction and vector search, a queued worker job and idempotency, removed study-tracker routes, and frontend HTTP health. Successful runs delete the test cluster; failures retain it for inspection. E2E operates only on the local Docker-provider environment. See [kubernetes/README.md](kubernetes/README.md).
 
 ## Delivery and credentials
 
@@ -88,4 +95,4 @@ devpod ssh metis -R 8001:127.0.0.1:8001
 # Inside that session, use GPTMOCK_BASE_URL=http://127.0.0.1:8001/v1
 ```
 
-LangChain and embeddings will be added in their planned phases. LangGraph is deferred until a real branching workflow requires it, as specified by the architectural plan. This milestone makes no live LLM calls and does not verify bridge availability.
+LangChain chat is planned for the next RAG phase. LangGraph is deferred until a real branching workflow requires it, as specified by the architectural plan. The current milestone makes no live LLM calls and does not verify bridge availability.
