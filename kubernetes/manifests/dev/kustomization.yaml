@@ -6,8 +6,9 @@ resources:
   - postgres.yaml
   - redis.yaml
   - database-secret.yaml
+  - runtime-config.yaml
   - backend
-  - worker.yaml
+  - worker
   - frontend
 
 namespace: metis

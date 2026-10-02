@@ -39,7 +39,7 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: metis-database
+                  name: metis-runtime
                   key: POSTGRES_PASSWORD
           readinessProbe:
             exec:

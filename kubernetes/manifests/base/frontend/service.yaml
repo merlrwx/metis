@@ -9,4 +9,4 @@ spec:
   ports:
     - port: 22111
       targetPort: 8501
-  type: LoadBalancer
+  type: ClusterIP

@@ -13,14 +13,24 @@ spec:
       labels:
         component: frontend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
           image: frontend:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8501
           env:
             - name: BACKEND_URL
               value: "http://backend:22112"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
           readinessProbe:
             httpGet:
               path: /_stcore/health

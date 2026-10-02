@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metis-config
+  namespace: metis
+data:
+  REDIS_URL: redis://dev-redis:6379/0
+  OBJECT_STORAGE_BACKEND: local
+  OBJECT_STORAGE_LOCAL_DIR: /data/metis-objects
+  EMBEDDING_PROVIDER: hashing

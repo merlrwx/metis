@@ -9,4 +9,4 @@ spec:
   ports:
     - port: 22112
       targetPort: 8000
-  type: LoadBalancer
+  type: ClusterIP

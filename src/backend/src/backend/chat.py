@@ -83,9 +83,9 @@ def get_chat_provider() -> ChatProvider:
         if timeout <= 0 or retries < 0:
             raise ValueError("Timeout must be positive and retries nonnegative")
         return LangChainOpenAICompatibleProvider(
-            base_url=os.environ.get("GPTMOCK_BASE_URL", "http://127.0.0.1:8000/v1"),
+            base_url=os.environ.get("GPTMOCK_BASE_URL", "http://127.0.0.1:8001/v1"),
             api_key=os.environ.get("GPTMOCK_API_KEY", "chatmock"),
-            model=os.environ.get("GPTMOCK_MODEL", "gpt-6-luna"),
+            model=os.environ.get("GPTMOCK_MODEL", "gpt-5.6-luna"),
             timeout=timeout,
             max_retries=retries,
         )

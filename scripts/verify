@@ -6,5 +6,6 @@ uv run --locked --project src/backend ruff format --check .
 uv run --locked --project src/backend pytest src/backend/tests --cov=backend --cov-report=term-missing --cov-fail-under=80
 uv run --locked --project src/frontend pytest src/frontend/tests --cov=app --cov-report=term-missing --cov-fail-under=80
 uv sync --locked --project kubernetes
+kubectl kustomize kubernetes/manifests/base >/dev/null
 kubectl kustomize kubernetes/manifests/dev >/dev/null
 docker compose config --quiet

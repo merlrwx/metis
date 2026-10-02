@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export GPTMOCK_BASE_URL="${GPTMOCK_BASE_URL:-http://127.0.0.1:8001/v1}"
+export GPTMOCK_API_KEY="${GPTMOCK_API_KEY:-chatmock}"
+export GPTMOCK_MODEL="${GPTMOCK_MODEL:-gpt-5.6-luna}"
+export GPTMOCK_TIMEOUT="${GPTMOCK_TIMEOUT:-120}"
+export GPTMOCK_MAX_RETRIES="${GPTMOCK_MAX_RETRIES:-1}"
+
+uv run --locked --project "$ROOT_DIR/src/backend" python - <<'PY'
+import os
+
+from langchain_openai import ChatOpenAI
+
+model = os.environ["GPTMOCK_MODEL"]
+response = ChatOpenAI(
+    base_url=os.environ["GPTMOCK_BASE_URL"],
+    api_key=os.environ["GPTMOCK_API_KEY"],
+    model=model,
+    use_responses_api=False,
+    timeout=float(os.environ["GPTMOCK_TIMEOUT"]),
+    max_retries=int(os.environ["GPTMOCK_MAX_RETRIES"]),
+).invoke("Reply with one short sentence confirming the Metis GPTMock test.")
+
+if not isinstance(response.content, str) or not response.content.strip():
+    raise SystemExit("GPTMock returned an empty or non-text response")
+
+print(f"GPTMock model: {model}")
+print(response.content)
+PY

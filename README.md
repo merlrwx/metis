@@ -82,7 +82,7 @@ mise exec -- uv run --locked --project kubernetes python kubernetes/e2e_test.py
 
 `verify` checks Ruff lint and formatting, backend and frontend tests with at least 80% coverage, dependency locks, Compose configuration and rendered Kubernetes manifests. Frontend tests run Streamlit's AppTest with mocked backend responses; normal CI uses local hashing embeddings and never calls an external model.
 
-E2E builds both Docker images and runs the Metis services in a disposable `metis-cluster` k3d cluster. It checks database migrations, bearer authentication, tenant metadata persistence, document upload, chunk extraction and vector search, a queued worker job and idempotency, removed study-tracker routes, and frontend HTTP health. Successful runs delete the test cluster; failures retain it for inspection. E2E operates only on the local Docker-provider environment. See [kubernetes/README.md](kubernetes/README.md).
+E2E builds both Docker images and runs the Metis services in a disposable `metis-cluster` k3d cluster. It checks database migrations, bearer authentication, tenant metadata persistence, document upload, chunk extraction and vector search, a queued worker job and idempotency, API and worker scaling, graceful worker termination, removed study-tracker routes, and frontend HTTP health. Successful runs delete the test cluster; failures retain it for inspection. E2E operates only on the local Docker-provider environment. See [kubernetes/README.md](kubernetes/README.md).
 
 ## Delivery and credentials
 
@@ -100,24 +100,26 @@ The reusable workflow updates dev image tags and opens a prod promotion PR. GitO
 
 ## Local LLM testing
 
-Metis uses LangChain `ChatOpenAI` with the existing GPTMock bridge. Forward its service to a workstation port that does not conflict with the Metis API:
+Metis uses LangChain `ChatOpenAI` with the existing GPTMock bridge. From the workstation, forward the read-only service to port 8001:
 
 ```bash
 kubectl -n hermes port-forward svc/chatmock 8001:8000
-export GPTMOCK_BASE_URL=http://127.0.0.1:8001/v1
-export GPTMOCK_MODEL=gpt-6-luna
-# GPTMOCK_API_KEY defaults to the placeholder "chatmock".
-export GPTMOCK_TIMEOUT=120
-export GPTMOCK_MAX_RETRIES=1
 ```
 
-Start the API with those variables in its environment, then call the chat endpoint above. The adapter uses the Chat Completions API (`use_responses_api=False`). Standard tests replace the provider and make no live model calls.
-
-Inside Kubernetes, the bridge URL is `http://chatmock.hermes.svc.cluster.local:8000/v1`. A DevPod has its own network namespace: its localhost is not the workstation. When running the backend directly inside the DevPod, reach a workstation port-forward through an SSH reverse tunnel:
+In a second workstation terminal, open a reverse tunnel into the DevPod:
 
 ```bash
-devpod ssh metis -R 8001:127.0.0.1:8001
-# Inside that session, use GPTMOCK_BASE_URL=http://127.0.0.1:8001/v1
+devpod ssh metis --reverse-forward-ports 8001:127.0.0.1:8001
 ```
 
-The bridge has not been checked from this workspace, so live GPTMock compatibility remains unverified. LangGraph remains deferred until a real branching workflow requires it, as specified by the architectural plan.
+In that DevPod shell, run:
+
+```bash
+mise run test-gptmock
+```
+
+The smoke test uses `gpt-5.6-luna`, which is currently advertised by the bridge. Set `GPTMOCK_MODEL` to another model returned by `/v1/models` if needed. The key defaults to the bridge's placeholder `chatmock`; no key is printed. The Compose API receives the same settings and defaults to `host.docker.internal:8001`; set `GPTMOCK_BASE_URL` to a URL reachable from its container if your DevPod network uses a different route. Recreate the backend after changing these settings with `docker compose up -d --force-recreate backend`. The adapter uses Chat Completions (`use_responses_api=False`). Standard tests and CI replace the provider and make no live model calls.
+
+The GitOps dev overlay uses `http://chatmock.hermes.svc.cluster.local:8000/v1` from inside the homelab cluster. The disposable k3d overlay never calls a live model during its tests; set `GPTMOCK_BASE_URL` to a reachable endpoint before using chat there. A DevPod has its own network namespace: its localhost is not the workstation. When running the backend directly inside the DevPod, use `http://127.0.0.1:8001/v1` through the reverse tunnel above.
+
+LangGraph remains deferred until a real branching workflow requires it, as specified by the architectural plan.

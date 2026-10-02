@@ -164,6 +164,116 @@ def wait_for_service(url):
     raise RuntimeError(f"Service is unavailable: {url}")
 
 
+def wait_for_job(base_url, organisation_id, job_id, expected_status):
+    job_url = f"/api/organisations/{organisation_id}/jobs/{job_id}"
+    for _ in range(60):
+        job = api(base_url, job_url)
+        if job["status"] == expected_status:
+            return job
+        time.sleep(0.5)
+    raise AssertionError(
+        f"Job {job_id} did not reach {expected_status}; last status was {job['status']}"
+    )
+
+
+def wait_for_deployment(name, replicas):
+    run(
+        "kubectl",
+        "rollout",
+        "status",
+        f"deployment/{name}",
+        "--namespace",
+        NAMESPACE,
+        "--timeout=120s",
+    )
+    result = run(
+        "kubectl",
+        "get",
+        "deployment",
+        name,
+        "--namespace",
+        NAMESPACE,
+        "--output",
+        "json",
+        capture_output=True,
+    )
+    deployment = json.loads(result.stdout)
+    require(
+        deployment["status"].get("readyReplicas", 0) == replicas,
+        f"{name} did not have {replicas} ready replicas",
+    )
+
+
+def test_horizontal_scaling(base_url, organisation_id):
+    run("kubectl", "scale", "deployment/dev-backend", "--replicas=2", "-n", NAMESPACE)
+    wait_for_deployment("dev-backend", 2)
+    wait_for_service(f"{base_url}/health")
+    require(
+        api(base_url, "/health") == {"status": "ok"}, "Scaled API failed health check"
+    )
+    run("kubectl", "scale", "deployment/dev-backend", "--replicas=1", "-n", NAMESPACE)
+    wait_for_deployment("dev-backend", 1)
+
+    run("kubectl", "scale", "deployment/dev-worker", "--replicas=2", "-n", NAMESPACE)
+    wait_for_deployment("dev-worker", 2)
+    job = api(
+        base_url,
+        "/api/jobs/test",
+        "POST",
+        {"organisation_id": organisation_id},
+        202,
+        {"Idempotency-Key": "metis-horizontal-worker-scale"},
+    )
+    completed = wait_for_job(base_url, organisation_id, job["id"], "completed")
+    require(completed["attempts"] == 1, "Scaled workers processed a job more than once")
+    run("kubectl", "scale", "deployment/dev-worker", "--replicas=1", "-n", NAMESPACE)
+    wait_for_deployment("dev-worker", 1)
+
+
+def test_worker_graceful_shutdown(base_url, organisation_id):
+    worker = "deployment/dev-worker"
+    run(
+        "kubectl",
+        "set",
+        "env",
+        worker,
+        "METIS_TEST_JOB_DELAY_SECONDS=6",
+        "--namespace",
+        NAMESPACE,
+    )
+    try:
+        wait_for_deployment("dev-worker", 1)
+        job = api(
+            base_url,
+            "/api/jobs/test",
+            "POST",
+            {"organisation_id": organisation_id},
+            202,
+            {"Idempotency-Key": "metis-graceful-worker-shutdown"},
+        )
+        running = wait_for_job(base_url, organisation_id, job["id"], "running")
+        require(running["attempts"] == 1, "Graceful shutdown job did not start once")
+        run("kubectl", "scale", worker, "--replicas=0", "--namespace", NAMESPACE)
+        completed = wait_for_job(base_url, organisation_id, job["id"], "completed")
+        require(
+            completed["attempts"] == 1,
+            "Worker termination did not finish the in-flight job exactly once",
+        )
+    finally:
+        run("kubectl", "scale", worker, "--replicas=1", "--namespace", NAMESPACE)
+        wait_for_deployment("dev-worker", 1)
+        run(
+            "kubectl",
+            "set",
+            "env",
+            worker,
+            "METIS_TEST_JOB_DELAY_SECONDS-",
+            "--namespace",
+            NAMESPACE,
+        )
+        wait_for_deployment("dev-worker", 1)
+
+
 def api(base_url, path, method="GET", payload=None, expected_status=200, headers=None):
     response = requests.request(
         method,
@@ -316,6 +426,9 @@ def test_backend(base_url):
     )
     require(duplicate["id"] == job["id"], "Idempotent request created another job")
     require(job["attempts"] == 1, "Job was processed more than once")
+
+    test_horizontal_scaling(base_url, organisation["id"])
+    test_worker_graceful_shutdown(base_url, organisation["id"])
 
     requests.post(
         f"{base_url}/api/auth/register",

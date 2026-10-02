@@ -3,6 +3,32 @@ from types import SimpleNamespace
 from backend import chat
 
 
+def test_chat_provider_defaults_to_local_gptmock(monkeypatch):
+    config = {}
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            config.update(kwargs)
+
+    monkeypatch.setattr(chat, "ChatOpenAI", FakeChatOpenAI)
+    for name in (
+        "GPTMOCK_BASE_URL",
+        "GPTMOCK_API_KEY",
+        "GPTMOCK_MODEL",
+        "GPTMOCK_TIMEOUT",
+        "GPTMOCK_MAX_RETRIES",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    provider = chat.get_chat_provider()
+
+    assert provider.model_id == "openai-compatible:gpt-5.6-luna"
+    assert config["base_url"] == "http://127.0.0.1:8001/v1"
+    assert config["api_key"] == "chatmock"
+    assert config["timeout"] == 120.0
+    assert config["max_retries"] == 1
+
+
 def test_chat_provider_uses_gptmock_configuration_and_records_usage(monkeypatch):
     config = {}
 

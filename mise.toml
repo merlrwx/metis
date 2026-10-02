@@ -37,6 +37,10 @@ run = "bash ./kubernetes/setup_cluster_minimal"
 description = "Run end-to-end tests for the Metis application in a local k3d cluster"
 run = "uv run --locked --project ./kubernetes python ./kubernetes/e2e_test.py"
 
+[tasks.test-gptmock]
+description = "Send an optional live test message to the configured GPTMock bridge"
+run = "bash ./scripts/test-gptmock"
+
 [tasks.setup-keys]
 description = "Set up deploy key for repo"
 run = "bash ./scripts/setup_deploy_key"

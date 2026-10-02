@@ -13,11 +13,61 @@ spec:
       labels:
         component: backend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: backend
           image: backend:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: metis-config
+            - secretRef:
+                name: metis-object-storage
+                optional: true
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: metis-runtime
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: metis-runtime
+                  key: REDIS_URL
+                  optional: true
+            - name: METIS_AUTH_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: metis-runtime
+                  key: METIS_AUTH_SECRET_KEY
+            - name: METIS_BOOTSTRAP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: metis-runtime
+                  key: METIS_BOOTSTRAP_TOKEN
+            - name: GPTMOCK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: metis-runtime
+                  key: GPTMOCK_API_KEY
+                  optional: true
+            - name: EMBEDDING_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: metis-runtime
+                  key: EMBEDDING_API_KEY
+                  optional: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
           readinessProbe:
             httpGet:
               path: /health
