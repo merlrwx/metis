@@ -21,16 +21,23 @@ class GroundedAnswer:
 
 
 def supporting_evidence(
-    hits: list[SearchHit], document_id: UUID | None = None
+    hits: list[SearchHit],
+    document_id: UUID | None = None,
+    document_ids: list[UUID] | None = None,
 ) -> list[SearchHit]:
-    # An explicitly chosen document supplies context independently of query similarity.
+    selected = (
+        document_ids
+        if document_ids is not None
+        else ([document_id] if document_id is not None else None)
+    )
+    # Explicitly selected documents supply context independently of query similarity.
     return [
         hit
         for hit in hits
         if (
-            hit.document.id == document_id
-            if document_id is not None
-            else hit.score >= MIN_RETRIEVAL_SCORE
+            hit.document.id in selected
+            if selected is not None
+            else hit.score >= MIN_RETRIEVAL_SCORE or hit.exact_match
         )
     ]
 
@@ -43,8 +50,9 @@ def answer_question(
     provider: ChatProvider | None,
     *,
     document_id: UUID | None = None,
+    document_ids: list[UUID] | None = None,
 ) -> GroundedAnswer:
-    evidence = supporting_evidence(hits, document_id)
+    evidence = supporting_evidence(hits, document_id, document_ids)
     if not evidence:
         return GroundedAnswer(NO_EVIDENCE_ANSWER, [], None)
     if provider is None:

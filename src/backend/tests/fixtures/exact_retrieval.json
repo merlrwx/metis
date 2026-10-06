@@ -1,0 +1,362 @@
+[
+  {
+    "id": "code-100",
+    "text": "Supplier ACME-100 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-100?"
+  },
+  {
+    "id": "amount-100",
+    "text": "Invoice payment amount is $100.25 for equipment.",
+    "question": "Which invoice was $100.25?"
+  },
+  {
+    "id": "code-101",
+    "text": "Supplier ACME-101 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-101?"
+  },
+  {
+    "id": "amount-101",
+    "text": "Invoice payment amount is $101.25 for equipment.",
+    "question": "Which invoice was $101.25?"
+  },
+  {
+    "id": "code-102",
+    "text": "Supplier ACME-102 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-102?"
+  },
+  {
+    "id": "amount-102",
+    "text": "Invoice payment amount is $102.25 for equipment.",
+    "question": "Which invoice was $102.25?"
+  },
+  {
+    "id": "code-103",
+    "text": "Supplier ACME-103 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-103?"
+  },
+  {
+    "id": "amount-103",
+    "text": "Invoice payment amount is $103.25 for equipment.",
+    "question": "Which invoice was $103.25?"
+  },
+  {
+    "id": "code-104",
+    "text": "Supplier ACME-104 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-104?"
+  },
+  {
+    "id": "amount-104",
+    "text": "Invoice payment amount is $104.25 for equipment.",
+    "question": "Which invoice was $104.25?"
+  },
+  {
+    "id": "code-105",
+    "text": "Supplier ACME-105 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-105?"
+  },
+  {
+    "id": "amount-105",
+    "text": "Invoice payment amount is $105.25 for equipment.",
+    "question": "Which invoice was $105.25?"
+  },
+  {
+    "id": "code-106",
+    "text": "Supplier ACME-106 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-106?"
+  },
+  {
+    "id": "amount-106",
+    "text": "Invoice payment amount is $106.25 for equipment.",
+    "question": "Which invoice was $106.25?"
+  },
+  {
+    "id": "code-107",
+    "text": "Supplier ACME-107 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-107?"
+  },
+  {
+    "id": "amount-107",
+    "text": "Invoice payment amount is $107.25 for equipment.",
+    "question": "Which invoice was $107.25?"
+  },
+  {
+    "id": "code-108",
+    "text": "Supplier ACME-108 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-108?"
+  },
+  {
+    "id": "amount-108",
+    "text": "Invoice payment amount is $108.25 for equipment.",
+    "question": "Which invoice was $108.25?"
+  },
+  {
+    "id": "code-109",
+    "text": "Supplier ACME-109 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-109?"
+  },
+  {
+    "id": "amount-109",
+    "text": "Invoice payment amount is $109.25 for equipment.",
+    "question": "Which invoice was $109.25?"
+  },
+  {
+    "id": "code-110",
+    "text": "Supplier ACME-110 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-110?"
+  },
+  {
+    "id": "amount-110",
+    "text": "Invoice payment amount is $110.25 for equipment.",
+    "question": "Which invoice was $110.25?"
+  },
+  {
+    "id": "code-111",
+    "text": "Supplier ACME-111 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-111?"
+  },
+  {
+    "id": "amount-111",
+    "text": "Invoice payment amount is $111.25 for equipment.",
+    "question": "Which invoice was $111.25?"
+  },
+  {
+    "id": "code-112",
+    "text": "Supplier ACME-112 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-112?"
+  },
+  {
+    "id": "amount-112",
+    "text": "Invoice payment amount is $112.25 for equipment.",
+    "question": "Which invoice was $112.25?"
+  },
+  {
+    "id": "code-113",
+    "text": "Supplier ACME-113 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-113?"
+  },
+  {
+    "id": "amount-113",
+    "text": "Invoice payment amount is $113.25 for equipment.",
+    "question": "Which invoice was $113.25?"
+  },
+  {
+    "id": "code-114",
+    "text": "Supplier ACME-114 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-114?"
+  },
+  {
+    "id": "amount-114",
+    "text": "Invoice payment amount is $114.25 for equipment.",
+    "question": "Which invoice was $114.25?"
+  },
+  {
+    "id": "code-115",
+    "text": "Supplier ACME-115 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-115?"
+  },
+  {
+    "id": "amount-115",
+    "text": "Invoice payment amount is $115.25 for equipment.",
+    "question": "Which invoice was $115.25?"
+  },
+  {
+    "id": "code-116",
+    "text": "Supplier ACME-116 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-116?"
+  },
+  {
+    "id": "amount-116",
+    "text": "Invoice payment amount is $116.25 for equipment.",
+    "question": "Which invoice was $116.25?"
+  },
+  {
+    "id": "code-117",
+    "text": "Supplier ACME-117 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-117?"
+  },
+  {
+    "id": "amount-117",
+    "text": "Invoice payment amount is $117.25 for equipment.",
+    "question": "Which invoice was $117.25?"
+  },
+  {
+    "id": "code-118",
+    "text": "Supplier ACME-118 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-118?"
+  },
+  {
+    "id": "amount-118",
+    "text": "Invoice payment amount is $118.25 for equipment.",
+    "question": "Which invoice was $118.25?"
+  },
+  {
+    "id": "code-119",
+    "text": "Supplier ACME-119 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-119?"
+  },
+  {
+    "id": "amount-119",
+    "text": "Invoice payment amount is $119.25 for equipment.",
+    "question": "Which invoice was $119.25?"
+  },
+  {
+    "id": "code-120",
+    "text": "Supplier ACME-120 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-120?"
+  },
+  {
+    "id": "amount-120",
+    "text": "Invoice payment amount is $120.25 for equipment.",
+    "question": "Which invoice was $120.25?"
+  },
+  {
+    "id": "code-121",
+    "text": "Supplier ACME-121 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-121?"
+  },
+  {
+    "id": "amount-121",
+    "text": "Invoice payment amount is $121.25 for equipment.",
+    "question": "Which invoice was $121.25?"
+  },
+  {
+    "id": "code-122",
+    "text": "Supplier ACME-122 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-122?"
+  },
+  {
+    "id": "amount-122",
+    "text": "Invoice payment amount is $122.25 for equipment.",
+    "question": "Which invoice was $122.25?"
+  },
+  {
+    "id": "code-123",
+    "text": "Supplier ACME-123 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-123?"
+  },
+  {
+    "id": "amount-123",
+    "text": "Invoice payment amount is $123.25 for equipment.",
+    "question": "Which invoice was $123.25?"
+  },
+  {
+    "id": "code-124",
+    "text": "Supplier ACME-124 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-124?"
+  },
+  {
+    "id": "amount-124",
+    "text": "Invoice payment amount is $124.25 for equipment.",
+    "question": "Which invoice was $124.25?"
+  },
+  {
+    "id": "code-125",
+    "text": "Supplier ACME-125 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-125?"
+  },
+  {
+    "id": "amount-125",
+    "text": "Invoice payment amount is $125.25 for equipment.",
+    "question": "Which invoice was $125.25?"
+  },
+  {
+    "id": "code-126",
+    "text": "Supplier ACME-126 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-126?"
+  },
+  {
+    "id": "amount-126",
+    "text": "Invoice payment amount is $126.25 for equipment.",
+    "question": "Which invoice was $126.25?"
+  },
+  {
+    "id": "code-127",
+    "text": "Supplier ACME-127 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-127?"
+  },
+  {
+    "id": "amount-127",
+    "text": "Invoice payment amount is $127.25 for equipment.",
+    "question": "Which invoice was $127.25?"
+  },
+  {
+    "id": "code-128",
+    "text": "Supplier ACME-128 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-128?"
+  },
+  {
+    "id": "amount-128",
+    "text": "Invoice payment amount is $128.25 for equipment.",
+    "question": "Which invoice was $128.25?"
+  },
+  {
+    "id": "code-129",
+    "text": "Supplier ACME-129 provides examination gloves. Standard supplier contact entry.",
+    "question": "Who supplies ACME-129?"
+  },
+  {
+    "id": "amount-129",
+    "text": "Invoice payment amount is $129.25 for equipment.",
+    "question": "Which invoice was $129.25?"
+  },
+  {
+    "id": "name-0",
+    "text": "Amelia Gray is responsible for equipment inspection.",
+    "question": "Find Amelia Gray"
+  },
+  {
+    "id": "name-1",
+    "text": "Oliver Smith is responsible for equipment inspection.",
+    "question": "Find Oliver Smith"
+  },
+  {
+    "id": "name-2",
+    "text": "Mia Wilson is responsible for equipment inspection.",
+    "question": "Find Mia Wilson"
+  },
+  {
+    "id": "name-3",
+    "text": "Noah Brown is responsible for equipment inspection.",
+    "question": "Find Noah Brown"
+  },
+  {
+    "id": "name-4",
+    "text": "Ava White is responsible for equipment inspection.",
+    "question": "Find Ava White"
+  },
+  {
+    "id": "name-5",
+    "text": "Leo Green is responsible for equipment inspection.",
+    "question": "Find Leo Green"
+  },
+  {
+    "id": "phrase-0",
+    "text": "The procedure states record the incident promptly",
+    "question": "Find the phrase \"record the incident promptly\""
+  },
+  {
+    "id": "phrase-1",
+    "text": "The procedure states request approval before ordering",
+    "question": "Find the phrase \"request approval before ordering\""
+  },
+  {
+    "id": "phrase-2",
+    "text": "The procedure states inspect equipment every Monday",
+    "question": "Find the phrase \"inspect equipment every Monday\""
+  },
+  {
+    "id": "phrase-3",
+    "text": "The procedure states retain receipts for reimbursement",
+    "question": "Find the phrase \"retain receipts for reimbursement\""
+  },
+  {
+    "id": "phrase-4",
+    "text": "The procedure states notify payroll before Friday",
+    "question": "Find the phrase \"notify payroll before Friday\""
+  },
+  {
+    "id": "phrase-5",
+    "text": "The procedure states never share access credentials",
+    "question": "Find the phrase \"never share access credentials\""
+  }
+]

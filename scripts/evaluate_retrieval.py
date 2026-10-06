@@ -20,12 +20,16 @@ from backend import database, embeddings
 
 async def evaluate():
     provider = embeddings.get_embedding_provider()
-    cases = json.loads(
-        (
-            Path(__file__).resolve().parents[1]
-            / "src/backend/tests/fixtures/semantic_retrieval.json"
-        ).read_text()
+    fixture = Path(
+        os.environ.get(
+            "METIS_RETRIEVAL_FIXTURE",
+            str(
+                Path(__file__).resolve().parents[1]
+                / "src/backend/tests/fixtures/semantic_retrieval.json"
+            ),
+        )
     )
+    cases = json.loads(fixture.read_text())
     ids = [uuid4(), uuid4()]
     results = []
     with TemporaryDirectory() as folder, database.SessionLocal() as session:
@@ -69,7 +73,12 @@ async def evaluate():
                 started = perf_counter()
                 query = provider.embed_query(case["question"])
                 hits = knowledge.search_chunks(
-                    session, ids[0], query, provider.model_id, 5
+                    session,
+                    ids[0],
+                    query,
+                    provider.model_id,
+                    5,
+                    query_text=case["question"],
                 )
                 assert all(hit.chunk.organisation_id == ids[0] for hit in hits)
                 assert all(hit.document.id != foreign.id for hit in hits)
@@ -100,6 +109,7 @@ async def evaluate():
                     provider.embed_query(question),
                     provider.model_id,
                     5,
+                    query_text=question,
                 )
                 assert not rag.supporting_evidence(hits), (
                     "Unanswerable fixture incorrectly passes the relevance gate"

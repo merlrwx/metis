@@ -112,6 +112,35 @@ class Source(Timestamped, Base):
     sync_error: Mapped[str | None] = mapped_column(String(255))
 
 
+class KnowledgeGroup(Timestamped, Base):
+    __tablename__ = "knowledge_groups"
+    __table_args__ = (UniqueConstraint("id", "organisation_id"),)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
+class KnowledgeGroupSource(Base):
+    __tablename__ = "knowledge_group_sources"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["group_id", "organisation_id"],
+            ["knowledge_groups.id", "knowledge_groups.organisation_id"],
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["source_id", "organisation_id"],
+            ["sources.id", "sources.organisation_id"],
+            ondelete="CASCADE",
+        ),
+    )
+    group_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    source_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    organisation_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+
+
 class Document(Timestamped, Base):
     __tablename__ = "documents"
     __table_args__ = (

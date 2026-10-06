@@ -43,6 +43,8 @@ from backend.schemas import (
     DocumentCreate,
     DocumentView,
     JobView,
+    KnowledgeGroupView,
+    KnowledgeGroupWrite,
     MemberAdd,
     MembershipView,
     OrganisationCreate,
@@ -59,7 +61,7 @@ from backend.schemas import (
     UserRegister,
     UserView,
 )
-from backend.services import audit, conversations, ingestion, knowledge, rag
+from backend.services import audit, conversations, groups, ingestion, knowledge, rag
 from backend.services import documents as document_service
 from backend.services import jobs as job_service
 from backend.storage import get_object_storage
@@ -653,6 +655,117 @@ def list_documents(
     ]
 
 
+@app.get(
+    "/api/organisations/{organisation_id}/groups",
+    response_model=list[KnowledgeGroupView],
+)
+def list_knowledge_groups(
+    organisation_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    _: Annotated[OrganisationMembership, Depends(auth.require_membership)],
+):
+    from backend.models import KnowledgeGroup
+
+    return [
+        groups.view(session, group)
+        for group in session.scalars(
+            select(KnowledgeGroup)
+            .where(KnowledgeGroup.organisation_id == organisation_id)
+            .order_by(KnowledgeGroup.name)
+        )
+    ]
+
+
+@app.post(
+    "/api/organisations/{organisation_id}/groups",
+    response_model=KnowledgeGroupView,
+    status_code=201,
+)
+def create_knowledge_group(
+    organisation_id: UUID,
+    payload: KnowledgeGroupWrite,
+    session: Annotated[Session, Depends(get_session)],
+    _: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+):
+    try:
+        return groups.save(session, organisation_id, payload.name, payload.source_ids)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.put(
+    "/api/organisations/{organisation_id}/groups/{group_id}",
+    response_model=KnowledgeGroupView,
+)
+def update_knowledge_group(
+    organisation_id: UUID,
+    group_id: UUID,
+    payload: KnowledgeGroupWrite,
+    session: Annotated[Session, Depends(get_session)],
+    _: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+):
+    try:
+        return groups.save(
+            session, organisation_id, payload.name, payload.source_ids, group_id
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.delete("/api/organisations/{organisation_id}/groups/{group_id}", status_code=204)
+def delete_knowledge_group(
+    organisation_id: UUID,
+    group_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    _: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+):
+    group = groups.owned_group(session, organisation_id, group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="Knowledge group not found")
+    session.delete(group)
+    session.commit()
+
+
+def request_scope(
+    session: Session, organisation_id: UUID, payload: SearchRequest | ChatRequest
+):
+    sources = payload.source_ids
+    documents = payload.document_ids
+    if payload.group_id is not None:
+        if sources is not None or payload.source_id is not None:
+            raise HTTPException(status_code=422, detail="Select a group or source IDs")
+        try:
+            sources = groups.source_ids(session, organisation_id, payload.group_id)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+
+    for identifier, selected in (
+        (payload.source_id, sources),
+        (payload.document_id, documents),
+    ):
+        if (
+            identifier is not None
+            and selected is not None
+            and identifier not in selected
+        ):
+            raise HTTPException(status_code=422, detail="Conflicting knowledge scope")
+    sources = (
+        sources
+        if sources is not None
+        else ([payload.source_id] if payload.source_id else None)
+    )
+    documents = (
+        documents
+        if documents is not None
+        else ([payload.document_id] if payload.document_id else None)
+    )
+    try:
+        knowledge.validate_scope(session, organisation_id, sources, documents)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return sources, documents
+
+
 @app.post("/api/organisations/{organisation_id}/search", response_model=SearchView)
 def search_documents(
     organisation_id: UUID,
@@ -662,6 +775,7 @@ def search_documents(
 ) -> SearchView:
     if session.get(Organisation, organisation_id) is None:
         raise HTTPException(status_code=404, detail="Organisation not found")
+    source_ids, document_ids = request_scope(session, organisation_id, payload)
     try:
         provider = embeddings.get_embedding_provider()
         query_embedding = provider.embed_query(payload.query)
@@ -680,11 +794,17 @@ def search_documents(
         payload.limit,
         payload.source_id,
         payload.document_id,
+        source_ids=source_ids,
+        document_ids=document_ids,
+        query_text=payload.query,
     )
     return SearchView(
         embedding_model=provider.model_id,
         results=[
             SearchResultView(
+                document_version_id=hit.chunk.document_version_id,
+                source_modified_at=hit.document.external_modified_at,
+                source_url=hit.document.source_uri,
                 chunk_id=hit.chunk.id,
                 document_id=hit.document.id,
                 document_title=hit.document.title,
@@ -702,6 +822,8 @@ def search_documents(
 
 def citation_view(hit: knowledge.SearchHit) -> CitationView:
     return CitationView(
+        document_version_id=hit.chunk.document_version_id,
+        source_modified_at=hit.document.external_modified_at,
         chunk_id=hit.chunk.id,
         document_id=hit.document.id,
         document_title=hit.document.title,
@@ -724,13 +846,7 @@ def chat_with_knowledge(
     if session.get(Organisation, organisation_id) is None:
         raise HTTPException(status_code=404, detail="Organisation not found")
 
-    if (
-        payload.document_id is not None
-        and knowledge.get_document(session, organisation_id, payload.document_id)
-        is None
-    ):
-        raise HTTPException(status_code=404, detail="Document not found")
-
+    source_ids, document_ids = request_scope(session, organisation_id, payload)
     conversation = None
     conversation_id = payload.conversation_id or uuid4()
     if payload.conversation_id is not None:
@@ -769,9 +885,15 @@ def chat_with_knowledge(
         embedding_provider.model_id,
         payload.top_k,
         document_id=payload.document_id,
+        source_ids=source_ids,
+        document_ids=document_ids,
+        expand_neighbors=True,
+        query_text=payload.message,
     )
     session.commit()
-    has_evidence = bool(rag.supporting_evidence(hits, payload.document_id))
+    has_evidence = bool(
+        rag.supporting_evidence(hits, payload.document_id, document_ids)
+    )
     try:
         chat_provider = chat.get_chat_provider() if has_evidence else None
         grounded = rag.answer_question(
@@ -780,6 +902,7 @@ def chat_with_knowledge(
             hits,
             chat_provider,
             document_id=payload.document_id,
+            document_ids=document_ids,
         )
     except chat.ChatProviderError as error:
         raise HTTPException(

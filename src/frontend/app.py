@@ -262,6 +262,69 @@ def render_knowledge(
     if sources is None:
         return
 
+    with st.expander("Saved knowledge groups"):
+        groups = request_json(
+            "GET", f"/api/organisations/{organisation_id}/groups", token
+        )
+        if groups is None:
+            return
+        for group in groups:
+            st.write(group["name"])
+            st.caption(f"{len(group['source_ids'])} sources")
+            if role in {"owner", "admin"}:
+                with st.form(f"edit_group_{group['id']}"):
+                    group_name = st.text_input("Group name", value=group["name"])
+                    selected = st.multiselect(
+                        "Group sources",
+                        [item["id"] for item in sources],
+                        default=group["source_ids"],
+                        format_func=lambda value: next(
+                            item["name"] for item in sources if item["id"] == value
+                        ),
+                    )
+                    save = st.form_submit_button("Save group")
+                    remove = st.form_submit_button("Delete group")
+                if save or remove:
+                    try:
+                        api.request(
+                            "DELETE" if remove else "PUT",
+                            f"/api/organisations/{organisation_id}/groups/{group['id']}",
+                            token=token,
+                            payload=None
+                            if remove
+                            else {"name": group_name, "source_ids": selected},
+                        )
+                        rerun_with_notice(
+                            "Group deleted." if remove else "Group saved."
+                        )
+                    except ApiError as error:
+                        show_api_error(error)
+        if role in {"owner", "admin"}:
+            with st.form("create_group"):
+                name = st.text_input("New group name")
+                selected = st.multiselect(
+                    "Include sources",
+                    [item["id"] for item in sources],
+                    format_func=lambda value: next(
+                        item["name"] for item in sources if item["id"] == value
+                    ),
+                )
+                create = st.form_submit_button("Create group")
+            if create:
+                try:
+                    api.request(
+                        "POST",
+                        f"/api/organisations/{organisation_id}/groups",
+                        token=token,
+                        payload={"name": name, "source_ids": selected},
+                    )
+                    rerun_with_notice("Group created.")
+                except ApiError as error:
+                    show_api_error(error)
+        st.caption(
+            "Groups save a source selection. They do not change who can access knowledge."
+        )
+
     source_column, detail_column = st.columns([1, 2])
     with source_column:
         st.subheader("Sources")
@@ -486,7 +549,50 @@ def render_chat(organisation_id: str, token: str) -> None:
         )
     else:
         st.caption(
-            "For a question about one file, select it above to use its contents directly."
+            "Metis finds relevant evidence across all indexed knowledge. Filters are optional."
+        )
+    scope = {"document_id": document_id}
+    with st.expander("Narrow knowledge scope"):
+        sources = request_json(
+            "GET", f"/api/organisations/{organisation_id}/sources", token
+        )
+        groups = request_json(
+            "GET", f"/api/organisations/{organisation_id}/groups", token
+        )
+        if sources is None or groups is None:
+            return
+        source_names = {item["id"]: item["name"] for item in sources}
+        group_names = {item["id"]: item["name"] for item in groups}
+        group_id = st.selectbox(
+            "Saved group",
+            [None, *group_names],
+            format_func=lambda value: (
+                "No group" if value is None else group_names[value]
+            ),
+            key=f"chat_group_{organisation_id}",
+        )
+        selected_sources = st.multiselect(
+            "Sources",
+            list(source_names),
+            format_func=source_names.get,
+            disabled=group_id is not None,
+            key=f"chat_sources_{organisation_id}",
+        )
+        selected_documents = st.multiselect(
+            "Documents",
+            list(ready_documents),
+            format_func=lambda value: ready_documents[value]["title"],
+            key=f"chat_documents_{organisation_id}",
+        )
+        if group_id is not None:
+            scope["group_id"] = group_id
+        elif selected_sources:
+            scope["source_ids"] = selected_sources
+        if selected_documents:
+            scope.pop("document_id", None)
+            scope["document_ids"] = selected_documents
+        st.caption(
+            "Filters narrow the search. With no filters, Metis searches all indexed knowledge."
         )
     for message in st.session_state.get("metis_chat_messages", []):
         with st.chat_message(message["role"]):
@@ -505,7 +611,7 @@ def render_chat(organisation_id: str, token: str) -> None:
                     payload={
                         "message": prompt,
                         "conversation_id": st.session_state.get("metis_chat_id"),
-                        "document_id": document_id,
+                        **scope,
                     },
                 )
         except ApiError as error:

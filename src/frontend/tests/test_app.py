@@ -66,6 +66,8 @@ def backend_response(request, timeout=30, *, documents=None, memberships=None):
                 "configuration": {},
             }
         ]
+    elif path == f"/api/organisations/{ORG_ID}/groups" and method == "GET":
+        body = []
     elif path == f"/api/organisations/{ORG_ID}/members":
         body = (
             [
@@ -479,3 +481,24 @@ def test_chat_selects_ready_document_and_explains_missing_sources():
         "No supporting document sources were returned" in item.value
         for item in app.caption
     )
+
+
+def test_chat_multi_selection_sends_shared_scope():
+    ready = document_response("indexed")
+    app = authenticated_app("Chat", documents=ready)
+    app.multiselect(key=f"chat_sources_{ORG_ID}").select(SOURCE_ID)
+    app.multiselect(key=f"chat_documents_{ORG_ID}").select(DOC_ID)
+    app.chat_input[0].set_value("Compare this knowledge")
+    payloads = []
+
+    def open_request(request, timeout):
+        if request.get_method() == "POST" and request.full_url.endswith("/chat"):
+            payloads.append(json.loads(request.data))
+        return backend_response(request, documents=ready)
+
+    with patch("api_client.urlopen", side_effect=open_request):
+        app.run()
+    assert not app.exception
+    assert payloads[0]["source_ids"] == [SOURCE_ID]
+    assert payloads[0]["document_ids"] == [DOC_ID]
+    assert "document_id" not in payloads[0]

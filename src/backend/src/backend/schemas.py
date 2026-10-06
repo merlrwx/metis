@@ -170,16 +170,39 @@ class UploadView(BaseModel):
     job: JobView
 
 
-class SearchRequest(BaseModel):
+class KnowledgeGroupWrite(BaseModel):
+    name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
+    ]
+    source_ids: list[uuid.UUID] = Field(max_length=20)
+
+
+class KnowledgeGroupView(KnowledgeGroupWrite):
+    id: uuid.UUID
+
+
+class KnowledgeScope(BaseModel):
+    group_id: uuid.UUID | None = None
+    source_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
+    source_ids: list[uuid.UUID] | None = Field(
+        default=None, min_length=1, max_length=20
+    )
+    document_ids: list[uuid.UUID] | None = Field(
+        default=None, min_length=1, max_length=20
+    )
+
+
+class SearchRequest(KnowledgeScope):
     query: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
     ]
-    source_id: uuid.UUID | None = None
-    document_id: uuid.UUID | None = None
     limit: int = Field(default=5, ge=1, le=20)
 
 
 class SearchResultView(BaseModel):
+    document_version_id: uuid.UUID | None = None
+    source_modified_at: datetime | None = None
     chunk_id: uuid.UUID
     document_id: uuid.UUID
     document_title: str
@@ -197,16 +220,17 @@ class SearchView(BaseModel):
     results: list[SearchResultView]
 
 
-class ChatRequest(BaseModel):
+class ChatRequest(KnowledgeScope):
     message: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
     ]
     conversation_id: uuid.UUID | None = None
-    document_id: uuid.UUID | None = None
     top_k: int = Field(default=5, ge=1, le=20)
 
 
 class CitationView(BaseModel):
+    document_version_id: uuid.UUID | None = None
+    source_modified_at: datetime | None = None
     chunk_id: uuid.UUID
     document_id: uuid.UUID
     document_title: str
