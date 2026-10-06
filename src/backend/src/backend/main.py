@@ -2,10 +2,11 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
+from urllib.parse import quote
 from uuid import UUID, uuid4
 
 import uvicorn
-from botocore.exceptions import BotoCoreError
+from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import (
     Depends,
     FastAPI,
@@ -16,7 +17,7 @@ from fastapi import (
     Query,
     UploadFile,
 )
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
@@ -605,6 +606,55 @@ def get_document(
     return document_view(session, document)
 
 
+@app.get(
+    "/api/organisations/{organisation_id}/documents/{document_id}/versions/{version_id}/download"
+)
+def download_document_version(
+    organisation_id: UUID,
+    document_id: UUID,
+    version_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    _: Annotated[OrganisationMembership, Depends(auth.require_membership)],
+) -> Response:
+    from backend.models import DocumentVersion
+
+    document = knowledge.get_document(session, organisation_id, document_id)
+    version = session.scalar(
+        select(DocumentVersion).where(
+            DocumentVersion.id == version_id,
+            DocumentVersion.document_id == document_id,
+            DocumentVersion.organisation_id == organisation_id,
+        )
+    )
+    if document is None or document.deleted_at is not None or version is None:
+        raise HTTPException(status_code=404, detail="Document version not found")
+    try:
+        content = get_object_storage().get(version.object_key)
+    except FileNotFoundError as error:
+        raise HTTPException(
+            status_code=404, detail="Original file is unavailable"
+        ) from error
+    except ClientError as error:
+        missing = error.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}
+        raise HTTPException(
+            status_code=404 if missing else 503, detail="Original file is unavailable"
+        ) from error
+    except (OSError, BotoCoreError) as error:
+        raise HTTPException(
+            status_code=503, detail="Original file storage is unavailable"
+        ) from error
+    return Response(
+        content=content,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": "attachment; filename*=UTF-8''"
+            + quote(version.filename, safe=""),
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @app.post(
     "/api/organisations/{organisation_id}/documents/{document_id}/retry",
     response_model=JobView,
@@ -890,12 +940,29 @@ def chat_with_knowledge(
         expand_neighbors=True,
         query_text=payload.message,
     )
+    complete_scope = False
+    if rag.needs_complete_scope(payload.message):
+        complete = knowledge.complete_scoped_evidence(
+            session,
+            organisation_id,
+            embedding_provider.model_id,
+            source_ids,
+            document_ids,
+        )
+        if complete is not None:
+            hits = complete
+            complete_scope = True
     session.commit()
     has_evidence = bool(
         rag.supporting_evidence(hits, payload.document_id, document_ids)
     )
     try:
-        chat_provider = chat.get_chat_provider() if has_evidence else None
+        chat_provider = (
+            chat.get_chat_provider()
+            if has_evidence
+            and (not rag.needs_complete_scope(payload.message) or complete_scope)
+            else None
+        )
         grounded = rag.answer_question(
             payload.message,
             history,
@@ -903,6 +970,7 @@ def chat_with_knowledge(
             chat_provider,
             document_id=payload.document_id,
             document_ids=document_ids,
+            complete_scope=complete_scope,
         )
     except chat.ChatProviderError as error:
         raise HTTPException(
@@ -940,6 +1008,7 @@ def chat_with_knowledge(
     return ChatResponse(
         conversation_id=conversation_id,
         answer=grounded.content,
+        outcome=grounded.outcome,
         citations=citations,
         model_id=completion.model_id if completion else None,
         usage=ChatUsageView(

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
@@ -248,6 +248,12 @@ class ChatUsageView(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    outcome: Literal[
+        "answered",
+        "partially_answered",
+        "clarification_needed",
+        "insufficient_evidence",
+    ] = "answered"
     conversation_id: uuid.UUID
     answer: str
     citations: list[CitationView]

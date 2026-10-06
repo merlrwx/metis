@@ -182,3 +182,31 @@ def test_multiple_sources_groups_versions_and_neighbours():
         assert {hit.document.id for hit in remaining} == {documents[1].id}
         with pytest.raises(ValueError):
             knowledge.validate_scope(session, own.id, None, [documents[1].id, uuid4()])
+
+
+def test_complete_scope_requires_every_active_version_and_bounded_evidence():
+    with database.SessionLocal() as session:
+        organisation = Organisation(name="Coverage")
+        session.add(organisation)
+        session.flush()
+        assert (
+            knowledge.complete_scoped_evidence(
+                session, organisation.id, "test", None, None
+            )
+            == []
+        )
+        document = Document(organisation_id=organisation.id, title="Not indexed")
+        session.add(document)
+        session.commit()
+        assert (
+            knowledge.complete_scoped_evidence(
+                session, organisation.id, "test", None, None
+            )
+            is None
+        )
+        assert (
+            knowledge.complete_scoped_evidence(
+                session, organisation.id, "test", [], None
+            )
+            == []
+        )

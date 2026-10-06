@@ -26,6 +26,7 @@ class MetisApi:
         form: dict[str, str] | None = None,
         upload: tuple[str, bytes, str] | None = None,
         source_id: str | None = None,
+        raw: bool = False,
     ):
         headers = {"Accept": "application/json"}
         if token:
@@ -60,6 +61,8 @@ class MetisApi:
                 0, "Cannot connect to the Metis API. Check the backend and try again."
             ) from error
 
+        if raw:
+            return content
         if not content:
             return None
         try:

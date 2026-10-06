@@ -389,3 +389,58 @@ def fuse_rankings(
             scores, key=lambda identifier: (-scores[identifier], str(identifier))
         )
     ]
+
+
+def complete_scoped_evidence(
+    session: Session,
+    organisation_id: uuid.UUID,
+    model_id: str,
+    source_ids: list[uuid.UUID] | None,
+    document_ids: list[uuid.UUID] | None,
+) -> list[SearchHit] | None:
+    """Prove coverage only for a small complete active indexed scope."""
+    validate_scope(session, organisation_id, source_ids, document_ids)
+    ensure_index_ready(session, organisation_id, model_id)
+    statement = select(Document).where(
+        Document.organisation_id == organisation_id, Document.deleted_at.is_(None)
+    )
+    if source_ids is not None:
+        statement = statement.where(Document.source_id.in_(source_ids))
+    if document_ids is not None:
+        statement = statement.where(Document.id.in_(document_ids))
+    documents = list(session.scalars(statement.order_by(Document.id).limit(51)))
+    if len(documents) > 50 or any(
+        document.current_version_id is None for document in documents
+    ):
+        return None
+    if not documents:
+        return []
+    by_version = {document.current_version_id: document for document in documents}
+    chunks = list(
+        session.scalars(
+            select(Chunk)
+            .where(
+                Chunk.organisation_id == organisation_id,
+                Chunk.document_version_id.in_(by_version),
+                Chunk.embedding_model == model_id,
+            )
+            .order_by(Chunk.document_version_id, Chunk.chunk_index)
+            .limit(21)
+        )
+    )
+    if (
+        len(chunks) > 20
+        or sum(len(chunk.content) for chunk in chunks) > 12000
+        or set(by_version) != {chunk.document_version_id for chunk in chunks}
+    ):
+        return None
+    sources = {source.id: source for source in list_sources(session, organisation_id)}
+    return [
+        SearchHit(
+            chunk,
+            by_version[chunk.document_version_id],
+            sources.get(by_version[chunk.document_version_id].source_id),
+            1.0,
+        )
+        for chunk in chunks
+    ]

@@ -89,3 +89,34 @@ def test_upload_rejects_cross_tenant_source_and_invalid_mime(monkeypatch, tmp_pa
         files={"file": ("policy.pdf", b"not a pdf", "text/plain")},
     )
     assert invalid_mime.status_code == 415
+
+
+def test_original_download_requires_matching_organisation_document_and_version(
+    monkeypatch, tmp_path
+):
+    client = configure_upload(monkeypatch, tmp_path)
+    org = client.post("/api/organisations", json={"name": "Downloads"}).json()["id"]
+    other = client.post("/api/organisations", json={"name": "Other"}).json()["id"]
+    upload = client.post(
+        f"/api/organisations/{org}/documents/upload",
+        files={"file": ("policy.txt", b"Synthetic private original", "text/plain")},
+    ).json()
+    document = upload["document"]
+    path = f"/documents/{document['id']}/versions/{document['current_version_id']}/download"
+    response = client.get(f"/api/organisations/{org}{path}")
+    assert response.status_code == 200
+    assert response.content == b"Synthetic private original"
+    assert response.headers["cache-control"] == "private, no-store"
+    assert "attachment" in response.headers["content-disposition"]
+    assert client.get(f"/api/organisations/{other}{path}").status_code == 404
+    from datetime import UTC, datetime
+    from uuid import UUID
+
+    from backend.models import Document
+
+    from backend import database
+
+    with database.SessionLocal() as session:
+        session.get(Document, UUID(document["id"])).deleted_at = datetime.now(UTC)
+        session.commit()
+    assert client.get(f"/api/organisations/{org}{path}").status_code == 404

@@ -24,6 +24,8 @@ class ChatProviderError(RuntimeError):
 
 
 class LangChainOpenAICompatibleProvider:
+    requires_structured_answers = True
+
     def __init__(
         self,
         base_url: str,

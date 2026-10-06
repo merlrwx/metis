@@ -107,3 +107,103 @@ def test_explicit_document_answers_payslip_question_despite_lexical_mismatch():
         question, [], [payslip], None, document_id="another-document"
     )
     assert other.content == NO_EVIDENCE_ANSWER and not other.citations
+
+
+def test_structured_outcomes_and_invalid_citations():
+    from backend.chat import ChatProviderError
+
+    provider = FakeChatProvider(
+        json.dumps(
+            {
+                "outcome": "partially_answered",
+                "answer": "The policy says notify the supervisor [C1]; escalation timing is missing.",
+            }
+        )
+    )
+    result = answer_question("What happens next?", [], [hit()], provider)
+    assert result.outcome == "partially_answered"
+    provider.content = json.dumps(
+        {
+            "outcome": "clarification_needed",
+            "answer": "Which pay period and net or gross amount do you mean?",
+        }
+    )
+    assert (
+        answer_question("How much?", [], [hit()], provider).outcome
+        == "clarification_needed"
+    )
+    provider.content = json.dumps(
+        {"outcome": "answered", "answer": "Wrong source [C9]"}
+    )
+    with pytest.raises(ChatProviderError):
+        answer_question("Question", [], [hit()], provider)
+    provider.content = json.dumps({"answer": "Missing required outcome [C1]"})
+    with pytest.raises(ChatProviderError):
+        answer_question("Question", [], [hit()], provider)
+
+
+def test_exhaustive_question_requires_proven_coverage_before_model_call():
+    provider = FakeChatProvider("There are 2 records [C1].")
+    result = answer_question("Count all records", [], [hit()], provider)
+    assert result.outcome == "clarification_needed"
+    assert provider.messages is None
+    assert "sample" in result.content
+
+
+def test_citations_are_renumbered_to_match_rendered_sources():
+    first, second = hit(), hit()
+    second.document.id = "second"
+    second.document.title = "Second"
+    provider = FakeChatProvider("Second [C2], first [C1].")
+    result = answer_question("Compare", [], [first, second], provider)
+    assert result.content == "Second [C1], first [C2]."
+    assert result.citations == [second, first]
+
+
+def test_structured_arithmetic_uses_checked_result_and_both_citations():
+    from test_calculations import calculation, evidence
+
+    provider = FakeChatProvider(
+        json.dumps(
+            {
+                "outcome": "answered",
+                "answer": "An unverified reason and wrong amount [C1]",
+                "calculation": calculation().model_dump(),
+            }
+        )
+    )
+    hits = evidence()
+    for result in hits:
+        result.document.title = "Synthetic payslip"
+        result.chunk.page = None
+        result.chunk.section = None
+    result = answer_question(
+        "Compare February net pay with January", [], hits, provider
+    )
+    assert result.outcome == "answered"
+    assert "100.15 AUD" in result.content
+    assert "unverified reason" not in result.content
+    assert len(result.citations) == 2
+    request = calculation()
+    request.operands[0].value = "9999"
+    provider.content = json.dumps(
+        {
+            "outcome": "answered",
+            "answer": "Bad arithmetic",
+            "calculation": request.model_dump(),
+        }
+    )
+    assert (
+        answer_question("Compare pay", [], hits, provider).outcome
+        == "clarification_needed"
+    )
+
+
+def test_local_thinking_prefix_is_removed_before_structured_validation():
+    provider = FakeChatProvider(
+        '<think>Internal provider preamble</think>{"outcome":"clarification_needed","answer":"Which period and net or gross pay?"}'
+    )
+    provider.requires_structured_answers = True
+    result = answer_question("How much was I paid?", [], [hit()], provider)
+    assert result.outcome == "clarification_needed"
+    assert result.content == "Which period and net or gross pay?"

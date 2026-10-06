@@ -72,3 +72,7 @@ run = "uv run --locked --project src/backend --extra semantic metis-download-emb
 [tasks.evaluate-retrieval]
 description = "Opt-in synthetic ingestion and semantic retrieval evaluation"
 run = "uv run --locked --project src/backend python scripts/evaluate_retrieval.py"
+
+[tasks.evaluate-answers]
+description = "Opt-in live answer-quality review over synthetic excerpts"
+run = "uv run --locked --project src/backend python scripts/evaluate_answers.py"

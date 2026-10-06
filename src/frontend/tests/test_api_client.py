@@ -69,3 +69,16 @@ def test_login_rejects_an_invalid_token_response():
         pytest.raises(ApiError, match="did not return a sign-in token"),
     ):
         MetisApi("http://backend:8000").login("user@example.test", "secret")
+
+
+def test_original_bytes_are_downloaded_with_authorisation():
+    with patch(
+        "api_client.urlopen", return_value=io.BytesIO(b"%PDF synthetic")
+    ) as urlopen:
+        result = MetisApi("http://backend:8000").request(
+            "GET", "/original", token="signed-token", raw=True
+        )
+    assert result == b"%PDF synthetic"
+    assert (
+        urlopen.call_args.args[0].get_header("Authorization") == "Bearer signed-token"
+    )

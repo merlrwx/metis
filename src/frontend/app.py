@@ -483,7 +483,12 @@ def render_knowledge(
         st.info("An organisation owner or admin can add sources and upload documents.")
 
 
-def render_citations(citations: list[dict]) -> None:
+def render_citations(
+    citations: list[dict],
+    organisation_id: str | None = None,
+    token: str | None = None,
+    key_prefix: str = "",
+) -> None:
     if not citations:
         st.caption("No supporting document sources were returned.")
         return
@@ -500,7 +505,36 @@ def render_citations(citations: list[dict]) -> None:
                 location.insert(0, citation["source_name"])
             if location:
                 st.caption(" · ".join(location))
+            if citation.get("document_version_id"):
+                st.caption("Version · " + citation["document_version_id"])
+            if citation.get("source_modified_at"):
+                st.caption("Source modified · " + citation["source_modified_at"])
             st.write(citation.get("snippet", ""))
+            version = citation.get("document_version_id")
+            if (
+                organisation_id
+                and token
+                and version
+                and st.button(
+                    "Prepare original download",
+                    key=f"{key_prefix}_original_{citation['chunk_id']}_{index}",
+                )
+            ):
+                try:
+                    original = api.request(
+                        "GET",
+                        f"/api/organisations/{organisation_id}/documents/{citation['document_id']}/versions/{version}/download",
+                        token=token,
+                        raw=True,
+                    )
+                    st.download_button(
+                        "Download original",
+                        original,
+                        file_name=title,
+                        key=f"{key_prefix}_download_{citation['chunk_id']}_{index}",
+                    )
+                except ApiError as error:
+                    show_api_error(error)
             source_url = citation.get("source_url")
             try:
                 source_link = urlsplit(source_url or "")
@@ -594,11 +628,25 @@ def render_chat(organisation_id: str, token: str) -> None:
         st.caption(
             "Filters narrow the search. With no filters, Metis searches all indexed knowledge."
         )
-    for message in st.session_state.get("metis_chat_messages", []):
+    for message_index, message in enumerate(
+        st.session_state.get("metis_chat_messages", [])
+    ):
         with st.chat_message(message["role"]):
+            outcome_label = {
+                "partially_answered": "Partially answered",
+                "clarification_needed": "Needs clarification",
+                "insufficient_evidence": "No supporting evidence",
+            }.get(message.get("outcome"))
+            if outcome_label:
+                st.caption(outcome_label)
             st.markdown(message["content"])
             if message.get("citations") is not None:
-                render_citations(message["citations"])
+                render_citations(
+                    message["citations"],
+                    organisation_id,
+                    token,
+                    key_prefix=f"chat_{message_index}",
+                )
 
     prompt = st.chat_input("Ask about your documents")
     if prompt:
@@ -624,6 +672,7 @@ def render_chat(organisation_id: str, token: str) -> None:
                     {
                         "role": "assistant",
                         "content": response["answer"],
+                        "outcome": response.get("outcome", "answered"),
                         "citations": response.get("citations", []),
                     },
                 ]
