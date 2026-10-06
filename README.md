@@ -84,6 +84,8 @@ mise exec -- uv run --locked --project kubernetes python kubernetes/e2e_test.py
 
 E2E builds both Docker images and runs the Metis services in a disposable `metis-cluster` k3d cluster. It checks database migrations, bearer authentication, tenant metadata persistence, document upload, chunk extraction and vector search, a queued worker job and idempotency, API and worker scaling, graceful worker termination, removed study-tracker routes, and frontend HTTP health. Successful runs delete the test cluster; failures retain it for inspection. E2E operates only on the local Docker-provider environment. See [kubernetes/README.md](kubernetes/README.md).
 
+`mise run verify-manifests` additionally renders this repository’s base and development Kubernetes overlays. Production overlays live in the separate GitOps repository. The autonomous goal's original `scripts/verify` stays stable; run both for deployment configuration changes.
+
 ## Delivery and credentials
 
 Backend and frontend checks, coverage, container builds and Trivy scans run on PRs and pushes to main. Kubernetes E2E also runs on PRs and main. Container release workflows publish `ghcr.io/merlrwx/metis-api` and `ghcr.io/merlrwx/metis-web` when `backend*` and `frontend*` tags are pushed.

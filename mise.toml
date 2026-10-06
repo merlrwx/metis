@@ -60,3 +60,7 @@ run = "uv run --locked --project src/backend python scripts/evaluate_llm.py"
 [tasks.benchmark-retrieval]
 description = "Opt-in synthetic retrieval measurement against an isolated PostgreSQL database"
 run = "uv run --locked --project src/backend python scripts/benchmark_retrieval.py"
+
+[tasks.verify-manifests]
+description = "Render local Kubernetes overlays independently of the stable goal verifier"
+run = "kubectl kustomize kubernetes/manifests/base >/dev/null && kubectl kustomize kubernetes/manifests/dev >/dev/null"
