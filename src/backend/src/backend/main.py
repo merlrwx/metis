@@ -62,7 +62,7 @@ from backend.services import audit, conversations, ingestion, knowledge, rag
 from backend.services import documents as document_service
 from backend.services import jobs as job_service
 from backend.storage import get_object_storage
-from backend.tasks import process_ingestion_job
+from backend.tasks import process_ingestion_job, synchronize_source
 
 
 @asynccontextmanager
@@ -366,6 +366,14 @@ def create_source(
     session: Annotated[Session, Depends(get_session)],
     actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
 ) -> SourceView:
+    if payload.type == "microsoft365" and (
+        set(payload.configuration) - {"sync_enabled"}
+        or not isinstance(payload.configuration.get("sync_enabled", False), bool)
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Microsoft 365 configuration accepts only sync_enabled; credentials are managed by the operator",
+        )
     source = knowledge.create_source(
         session,
         organisation_id,
@@ -380,6 +388,57 @@ def create_source(
         organisation_id,
         actor.user_id,
         "source.created",
+        "source",
+        source.id,
+    )
+    session.commit()
+    return source
+
+
+@app.post(
+    "/api/organisations/{organisation_id}/sources/{source_id}/sync",
+    response_model=SourceView,
+    status_code=202,
+)
+async def synchronize_knowledge_source(
+    organisation_id: UUID,
+    source_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+    full: bool = False,
+) -> SourceView:
+    from backend.services.source_sync import owned_source, source_is_busy
+
+    source = owned_source(session, organisation_id, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if source.type != "microsoft365":
+        raise HTTPException(
+            status_code=422, detail="This source does not support synchronization"
+        )
+    if not QUEUE_CONFIGURED:
+        raise HTTPException(status_code=503, detail="Background queue is unavailable")
+    if source_is_busy(source):
+        return source
+    if full:
+        source.sync_checkpoint = None
+    source.sync_status = "queued"
+    source.sync_error = None
+    session.commit()
+    try:
+        await synchronize_source.kiq(str(source.id), str(organisation_id))
+    except Exception as error:
+        source.sync_status = "failed"
+        source.sync_error = "QueueUnavailable"
+        session.commit()
+        raise HTTPException(
+            status_code=503, detail="Background queue is unavailable"
+        ) from error
+    audit.record_event(
+        session,
+        organisation_id,
+        actor.user_id,
+        "source.sync_requested",
         "source",
         source.id,
     )
@@ -435,7 +494,13 @@ def document_view(session: Session, document) -> DocumentView:
     job = document_service.get_document_job(
         session, document.organisation_id, document.current_version_id
     )
-    status = job.status if job is not None else None
+    status = (
+        "deleted"
+        if document.deleted_at is not None
+        else job.status
+        if job is not None
+        else None
+    )
     if status == "completed":
         status = "indexed"
     return DocumentView(
@@ -632,6 +697,7 @@ def citation_view(hit: knowledge.SearchHit) -> CitationView:
         chunk_id=hit.chunk.id,
         document_id=hit.document.id,
         document_title=hit.document.title,
+        source_url=hit.document.source_uri,
         source_id=hit.document.source_id,
         source_name=hit.source.name if hit.source else None,
         page=hit.chunk.page,

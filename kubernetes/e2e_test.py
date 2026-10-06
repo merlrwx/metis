@@ -461,6 +461,24 @@ def test_backend(base_url):
         NAMESPACE,
         "--timeout=120s",
     )
+    run(
+        "kubectl",
+        "create",
+        "job",
+        "--from=cronjob/dev-sync-sources",
+        "dev-sync-sources-e2e",
+        "--namespace",
+        NAMESPACE,
+    )
+    run(
+        "kubectl",
+        "wait",
+        "--for=condition=complete",
+        "job/dev-sync-sources-e2e",
+        "--namespace",
+        NAMESPACE,
+        "--timeout=120s",
+    )
     metrics = requests.get(f"{base_url}/metrics", timeout=10)
     require(metrics.status_code == 200, "API metrics unavailable")
     require("metis_queue_depth" in metrics.text, "Queue metrics missing")

@@ -358,3 +358,153 @@ def test_pending_job_reconciliation_delivers_to_worker_and_exports_metrics():
     finally:
         stop_worker(worker)
         reset_stream(redis)
+
+
+def test_external_source_changes_index_and_deletions_remove_retrieval(monkeypatch):
+    from dataclasses import replace
+    from datetime import UTC, datetime
+    from uuid import UUID
+
+    from backend.connectors.base import DocumentChanges, RemoteDocument
+    from backend.models import Source
+    from backend.services.source_sync import synchronize
+    from backend.storage import get_object_storage
+    from backend.tasks import process_ingestion_job
+
+    redis = Redis.from_url(os.environ["REDIS_URL"])
+    reset_stream(redis)
+    worker = start_worker()
+    remote = RemoteDocument(
+        "external-file",
+        "policy.txt",
+        "text/plain",
+        "v1",
+        datetime.now(UTC),
+        "https://example.sharepoint.com/policy.txt",
+    )
+
+    class FixtureLibrary:
+        deleted = False
+        changed = False
+
+        async def list_documents(self, checkpoint=None):
+            return DocumentChanges(
+                [
+                    replace(
+                        remote,
+                        deleted=self.deleted,
+                        etag="v2" if self.changed else "v1",
+                    )
+                ],
+                "next-checkpoint",
+            )
+
+        async def fetch_document(self, document):
+            return (
+                b"Medication incident: notify the supervisor and record the incident."
+                + (
+                    b" Changed policy requires a register entry."
+                    if self.changed
+                    else b""
+                )
+            )
+
+    library = FixtureLibrary()
+    published = []
+
+    async def publisher(job_id, organisation_id):
+        published.append((job_id, organisation_id))
+        await process_ingestion_job.kiq(job_id, organisation_id)
+
+    try:
+        with authenticated_client(app) as client:
+            organisation = client.post(
+                "/api/organisations", json={"name": "Connected library"}
+            ).json()
+            foreign = client.post(
+                "/api/organisations", json={"name": "Other tenant"}
+            ).json()
+            source = client.post(
+                f"/api/organisations/{organisation['id']}/sources",
+                json={"name": "Library", "type": "microsoft365"},
+            ).json()
+            with database.SessionLocal() as session:
+                client.portal.call(
+                    synchronize,
+                    session,
+                    UUID(organisation["id"]),
+                    UUID(source["id"]),
+                    library,
+                    get_object_storage(),
+                    publisher,
+                )
+            completed = wait_for_status(
+                client, organisation["id"], published[-1][0], "indexed"
+            )
+            assert completed["attempts"] == 1
+            query = {"query": "medication incident supervisor"}
+            results = client.post(
+                f"/api/organisations/{organisation['id']}/search", json=query
+            ).json()["results"]
+            assert len(results) == 1
+            document_id = results[0]["document_id"]
+            document = client.get(
+                f"/api/organisations/{organisation['id']}/documents/{document_id}"
+            ).json()
+            assert document["source_uri"] == remote.source_url
+            assert (
+                client.post(
+                    f"/api/organisations/{foreign['id']}/search", json=query
+                ).json()["results"]
+                == []
+            )
+            monkeypatch.setattr(chat, "get_chat_provider", FakeChatProvider)
+            answer = client.post(
+                f"/api/organisations/{organisation['id']}/chat",
+                json={"message": "What happens after a medication incident?"},
+            ).json()
+            assert answer["citations"][0]["source_url"] == remote.source_url
+            library.changed = True
+            with database.SessionLocal() as session:
+                client.portal.call(
+                    synchronize,
+                    session,
+                    UUID(organisation["id"]),
+                    UUID(source["id"]),
+                    library,
+                    get_object_storage(),
+                    publisher,
+                )
+            wait_for_status(client, organisation["id"], published[-1][0], "indexed")
+            results = client.post(
+                f"/api/organisations/{organisation['id']}/search", json=query
+            ).json()["results"]
+            assert len(results) == 1 and "register entry" in results[0]["content"]
+            library.deleted = True
+            with database.SessionLocal() as session:
+                client.portal.call(
+                    synchronize,
+                    session,
+                    UUID(organisation["id"]),
+                    UUID(source["id"]),
+                    library,
+                    get_object_storage(),
+                    publisher,
+                )
+                saved = session.get(Source, UUID(source["id"]))
+                assert saved.sync_status == "idle"
+            assert (
+                client.post(
+                    f"/api/organisations/{organisation['id']}/search", json=query
+                ).json()["results"]
+                == []
+            )
+            assert (
+                client.get(
+                    f"/api/organisations/{organisation['id']}/documents/{document_id}"
+                ).json()["ingestion_status"]
+                == "deleted"
+            )
+    finally:
+        stop_worker(worker)
+        reset_stream(redis)

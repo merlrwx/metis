@@ -32,6 +32,7 @@ markers = ["external_worker: starts a separate background worker process"]
 metis-api = "backend.main:main"
 metis-worker = "backend.worker:main"
 metis-reconcile = "backend.reconcile:main"
+metis-sync-sources = "backend.sync_sources:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/backend"]

@@ -1,0 +1,5 @@
+# Opt-in override: the file path and credentials remain outside Git.
+services:
+  worker:
+    env_file:
+      - ${METIS_CONNECTOR_ENV_FILE:?Set METIS_CONNECTOR_ENV_FILE to an external connector environment file}

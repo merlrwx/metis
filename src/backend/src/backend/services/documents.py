@@ -51,7 +51,7 @@ def upload_document(
                 Source.organisation_id == organisation_id,
             )
         )
-        if source is None:
+        if source is None or source.type != "upload":
             return None, None, False
 
     source_uri = f"upload://{source.id}/{quote(filename, safe='')}"

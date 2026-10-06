@@ -150,3 +150,19 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
     observability.log_event(
         "job_completed", job_id=job_id, organisation_id=organisation_id, attempt=attempt
     )
+
+
+@broker.task
+async def synchronize_source(source_id: str, organisation_id: str) -> None:
+    from backend.services.source_sync import sync_source
+
+    try:
+        await sync_source(
+            uuid.UUID(organisation_id), uuid.UUID(source_id), process_ingestion_job.kiq
+        )
+    except Exception:  # noqa: BLE001 -- sanitize all connector failures before Taskiq logs them
+        from backend.connectors.base import ConnectorError
+
+        raise ConnectorError(
+            "Source synchronization failed; inspect its status"
+        ) from None

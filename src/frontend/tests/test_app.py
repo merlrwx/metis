@@ -386,3 +386,73 @@ def test_expired_session_returns_to_sign_in():
     assert not app.exception
     assert "metis_token" not in app.session_state
     assert any("session expired" in item.value.lower() for item in app.warning)
+
+
+def test_owner_can_add_microsoft365_source_with_periodic_sync():
+    app = authenticated_app("Knowledge")
+    submitted = []
+
+    def open_request(request, timeout):
+        if request.get_method() == "POST" and urlparse(request.full_url).path.endswith(
+            "/sources"
+        ):
+            submitted.append(json.loads(request.data))
+        return backend_response(request)
+
+    with patch("api_client.urlopen", side_effect=open_request):
+        next(
+            widget for widget in app.selectbox if widget.label == "Source type"
+        ).set_value("Microsoft 365 library")
+        app.run()
+        app.text_input[-1].set_value("Organisation library")
+        app.checkbox[0].check()
+        next(button for button in app.button if button.label == "Add source").click()
+        app.run()
+    assert not app.exception
+    assert submitted == [
+        {
+            "name": "Organisation library",
+            "type": "microsoft365",
+            "configuration": {"sync_enabled": True},
+        }
+    ]
+
+
+def test_microsoft365_source_sync_shows_progress_and_can_retry():
+    requests = []
+
+    def open_request(request, timeout):
+        path = urlparse(request.full_url).path
+        if (
+            path == f"/api/organisations/{ORG_ID}/sources"
+            and request.get_method() == "GET"
+        ):
+            return io.BytesIO(
+                json.dumps(
+                    [
+                        {
+                            "id": SOURCE_ID,
+                            "name": "Library",
+                            "type": "microsoft365",
+                            "sync_status": "failed",
+                            "configuration": {},
+                        }
+                    ]
+                ).encode()
+            )
+        if path == f"/api/organisations/{ORG_ID}/sources/{SOURCE_ID}/sync":
+            requests.append(request.get_method())
+            return io.BytesIO(b'{"sync_status":"queued"}')
+        return backend_response(request)
+
+    app = AppTest.from_file(str(APP))
+    app.session_state["metis_token"] = "signed-token"
+    with patch("api_client.urlopen", side_effect=open_request):
+        app.run()
+        app.sidebar.radio[0].set_value("Knowledge")
+        app.run()
+        assert any("Last synchronization failed" in item.value for item in app.caption)
+        next(button for button in app.button if button.label == "Sync now").click()
+        app.run()
+    assert not app.exception and requests == ["POST"]
+    assert any("synchronization queued" in item.value for item in app.success)

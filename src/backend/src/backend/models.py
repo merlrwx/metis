@@ -103,12 +103,24 @@ class Source(Timestamped, Base):
         JSON_OBJECT, nullable=False, default=dict
     )
 
+    sync_checkpoint: Mapped[str | None] = mapped_column(Text)
+    sync_status: Mapped[str] = mapped_column(String(16), nullable=False, default="idle")
+    sync_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sync_error: Mapped[str | None] = mapped_column(String(255))
+
 
 class Document(Timestamped, Base):
     __tablename__ = "documents"
     __table_args__ = (
         UniqueConstraint("id", "organisation_id"),
         UniqueConstraint("organisation_id", "source_uri"),
+        UniqueConstraint(
+            "organisation_id",
+            "source_id",
+            "external_id",
+            name="uq_document_external_source",
+        ),
         ForeignKeyConstraint(
             ["source_id", "organisation_id"],
             ["sources.id", "sources.organisation_id"],
@@ -124,6 +136,12 @@ class Document(Timestamped, Base):
     source_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     source_uri: Mapped[str | None] = mapped_column(String(2048))
+    external_id: Mapped[str | None] = mapped_column(String(512))
+    external_etag: Mapped[str | None] = mapped_column(String(1024))
+    external_modified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     current_version_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

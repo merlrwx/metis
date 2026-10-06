@@ -119,6 +119,10 @@ class SourceView(BaseModel):
     type: str
     name: str
     configuration: dict[str, Any]
+    sync_status: str = "idle"
+    sync_started_at: datetime | None = None
+    last_synced_at: datetime | None = None
+    sync_error: str | None = None
     created_at: datetime
 
 
@@ -179,6 +183,7 @@ class SearchResultView(BaseModel):
     chunk_id: uuid.UUID
     document_id: uuid.UUID
     document_title: str
+    source_url: str | None = None
     source_id: uuid.UUID | None
     source_name: str | None
     content: str
@@ -204,6 +209,7 @@ class CitationView(BaseModel):
     chunk_id: uuid.UUID
     document_id: uuid.UUID
     document_title: str
+    source_url: str | None = None
     source_id: uuid.UUID | None
     source_name: str | None
     page: int | None

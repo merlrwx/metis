@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlsplit
 
 import streamlit as st
 from api_client import ApiError, MetisApi
@@ -267,12 +268,62 @@ def render_knowledge(
         if sources:
             for source in sources:
                 st.write(source["name"])
-                st.caption(source["type"].replace("_", " ").title())
+                st.caption(
+                    "Microsoft 365"
+                    if source["type"] == "microsoft365"
+                    else source["type"].replace("_", " ").title()
+                )
+                if source["type"] == "microsoft365":
+                    status = source.get("sync_status", "idle")
+                    label = {
+                        "queued": "Queued for synchronization",
+                        "syncing": "Synchronizing library",
+                        "failed": "Last synchronization failed",
+                    }.get(
+                        status,
+                        "Last synchronized: " + source["last_synced_at"]
+                        if source.get("last_synced_at")
+                        else "Not yet synchronized",
+                    )
+                    st.caption(label)
+                    if status == "failed":
+                        st.caption(
+                            "Ask your administrator to check the library connection, then retry."
+                        )
+                    if role in {"owner", "admin"} and st.button(
+                        "Sync now", key=f"sync_source_{source['id']}"
+                    ):
+                        try:
+                            result = api.request(
+                                "POST",
+                                f"/api/organisations/{organisation_id}/sources/{source['id']}/sync",
+                                token=token,
+                            )
+                            rerun_with_notice(
+                                "Library synchronization is in progress."
+                                if result.get("sync_status") == "syncing"
+                                else "Library synchronization queued. Refresh to check its progress."
+                            )
+                        except ApiError as error:
+                            show_api_error(error)
         else:
             st.info("Uploaded files will appear here as a source.")
         if role in {"owner", "admin"}:
+            source_kind = st.selectbox(
+                "Source type",
+                ["File uploads", "Microsoft 365 library"],
+                key="new_source_type",
+            )
             with st.form("create_source_form"):
                 source_name = st.text_input("New source name")
+                auto_sync = False
+                if source_kind == "Microsoft 365 library":
+                    st.caption(
+                        "Your administrator must connect a library approved for this whole organisation before its first sync."
+                    )
+                    auto_sync = st.checkbox(
+                        "Synchronize automatically every 15 minutes", value=False
+                    )
                 source_submitted = st.form_submit_button("Add source")
             if source_submitted:
                 try:
@@ -280,7 +331,15 @@ def render_knowledge(
                         "POST",
                         f"/api/organisations/{organisation_id}/sources",
                         token=token,
-                        payload={"name": source_name, "type": "upload"},
+                        payload={
+                            "name": source_name,
+                            "type": "microsoft365"
+                            if source_kind == "Microsoft 365 library"
+                            else "upload",
+                            "configuration": {"sync_enabled": auto_sync}
+                            if source_kind == "Microsoft 365 library"
+                            else {},
+                        },
                     )
                     rerun_with_notice("Source added.")
                 except ApiError as error:
@@ -316,6 +375,8 @@ def render_knowledge(
         st.subheader("Upload a document")
         source_options = {None: "File uploads"}
         for source in sources:
+            if source["type"] != "upload":
+                continue
             label = source["name"]
             if label in source_options.values():
                 label = f"{label} · {source['id'][:8]}"
@@ -377,6 +438,13 @@ def render_citations(citations: list[dict]) -> None:
             if location:
                 st.caption(" · ".join(location))
             st.write(citation.get("snippet", ""))
+            source_url = citation.get("source_url")
+            try:
+                source_link = urlsplit(source_url or "")
+            except ValueError:
+                source_link = urlsplit("")
+            if source_link.scheme in {"http", "https"} and source_link.netloc:
+                st.link_button("Open source document", source_url)
 
 
 def render_chat(organisation_id: str, token: str) -> None:

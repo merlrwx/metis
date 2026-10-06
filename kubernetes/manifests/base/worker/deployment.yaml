@@ -33,6 +33,9 @@ spec:
             - secretRef:
                 name: metis-object-storage
                 optional: true
+            - secretRef:
+                name: metis-connectors
+                optional: true
           ports:
             - name: metrics
               containerPort: 9100
