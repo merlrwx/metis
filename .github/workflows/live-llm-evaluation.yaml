@@ -1,0 +1,49 @@
+name: Optional live LLM evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_live_requests:
+        description: Authorize three live model requests using synthetic evaluation fixtures
+        type: boolean
+        required: true
+        default: false
+      model:
+        description: Model advertised by the configured bridge
+        type: string
+        default: gpt-5.6-luna
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    if: inputs.confirm_live_requests && vars.METIS_LIVE_LLM_EVAL_ENABLED == 'true'
+    runs-on: [self-hosted, metis-llm]
+    timeout-minutes: 10
+    env:
+      METIS_LIVE_LLM_ENABLED: "true"
+      METIS_EVALUATION_OUTPUT: evaluation-results.json
+      GPTMOCK_BASE_URL: ${{ secrets.GPTMOCK_BASE_URL }}
+      GPTMOCK_API_KEY: ${{ secrets.GPTMOCK_API_KEY }}
+      GPTMOCK_MODEL: ${{ inputs.model }}
+      GPTMOCK_TIMEOUT: "120"
+      GPTMOCK_MAX_RETRIES: "0"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: 0.12.19
+      - name: Install Python
+        run: uv python install 3.13.15
+      - name: Evaluate grounded answers
+        run: uv run --locked --project src/backend python scripts/evaluate_llm.py
+      - name: Save synthetic evaluation results
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: llm-evaluation
+          path: evaluation-results.json
+          retention-days: 7

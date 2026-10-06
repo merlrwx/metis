@@ -1,0 +1,25 @@
+name: Monitoring checks
+
+on:
+  pull_request:
+    paths: [monitoring/**, .github/workflows/monitoring-test.yaml]
+  push:
+    branches: [main]
+    paths: [monitoring/**, .github/workflows/monitoring-test.yaml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate Prometheus alerts
+        run: docker run --rm --entrypoint promtool -v "$PWD/monitoring:/etc/prometheus:ro" prom/prometheus:v3.15.0 check rules /etc/prometheus/metis-alerts.yaml
+      - name: Validate scrape configuration
+        run: docker run --rm --entrypoint promtool -v "$PWD/monitoring:/etc/prometheus:ro" prom/prometheus:v3.15.0 check config /etc/prometheus/prometheus.yaml
+      - name: Validate Grafana dashboard JSON
+        run: python -m json.tool monitoring/grafana-dashboard.json >/dev/null

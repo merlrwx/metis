@@ -145,3 +145,11 @@ GPTMOCK_BASE_URL=http://host.docker.internal:8002/v1 \
 Open `http://localhost:8501`, create an account and organisation, upload a document, wait for indexing, then ask a question using words from that document. API documentation is at `http://localhost:8000/docs`. Keep both tunnels running while testing. Port 8002 listens inside DevPod; the workstation model forward remains on loopback.
 
 LangGraph remains deferred until a real branching workflow requires it, as specified by the architectural plan.
+
+## CI and optional model evaluation
+
+Backend CI runs lint, pre-commit, unit and PostgreSQL/Redis integration tests, image build and Trivy scanning. Kubernetes E2E uses known uploads and deterministic embeddings, verifies tenant isolation and retrieval, tests worker shutdown, and runs the reconciliation CronJob. Monitoring CI validates alert rules, scrape configuration and dashboard JSON. Normal push/PR checks never call a live embedding or chat endpoint.
+
+To evaluate the local bridge explicitly, run `METIS_LIVE_LLM_ENABLED=true mise run evaluate-llm` inside DevPod with the reverse tunnel active. The script makes three model requests using synthetic fixture documents and writes `.agent/llm-evaluation.json`: citation presence, lexical checks for expected facts, latency, model ID and token usage. Lexical checks are a small regression signal; they do not establish general factual accuracy. No tenant documents or prompts are written to the report.
+
+The separate **Optional live LLM evaluation** workflow is manual and disabled until repository variable `METIS_LIVE_LLM_EVAL_ENABLED=true` is configured. It requires a trusted self-hosted runner labeled `metis-llm` that can reach the bridge, plus `GPTMOCK_BASE_URL` and `GPTMOCK_API_KEY` repository secrets. Dispatch it with `confirm_live_requests=true` and an advertised model ID; its artifact contains only the synthetic evaluation results. Runner setup and credentials are external configuration steps. Never run untrusted PR code on that runner.

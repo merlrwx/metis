@@ -52,3 +52,7 @@ run = "bash ./scripts/setup_gitops"
 [tasks.setup-cluster-gitops]
 description = "Create a local k3d cluster and bootstrap Flux"
 run = "bash ./scripts/setup_cluster_gitops"
+
+[tasks.evaluate-llm]
+description = "Opt-in live evaluation using synthetic grounded-answer fixtures"
+run = "uv run --locked --project src/backend python scripts/evaluate_llm.py"
