@@ -56,3 +56,7 @@ run = "bash ./scripts/setup_cluster_gitops"
 [tasks.evaluate-llm]
 description = "Opt-in live evaluation using synthetic grounded-answer fixtures"
 run = "uv run --locked --project src/backend python scripts/evaluate_llm.py"
+
+[tasks.benchmark-retrieval]
+description = "Opt-in synthetic retrieval measurement against an isolated PostgreSQL database"
+run = "uv run --locked --project src/backend python scripts/benchmark_retrieval.py"

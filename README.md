@@ -157,3 +157,7 @@ The separate **Optional live LLM evaluation** workflow is manual and disabled un
 ## External knowledge
 
 Knowledge supports adding a Microsoft 365 library and requesting synchronization. The worker imports changed supported files and removes deleted files from future retrieval, while preserving version history and source links. Periodic synchronization is opt-in. See [Microsoft 365 setup and limitations](docs/microsoft365.md) for source-bound credentials, organisation-wide library permissions, external Secret names, scheduling and verification status. Real Microsoft 365 access requires operator configuration; normal CI uses synthetic connector fixtures.
+
+## Performance baseline
+
+See [retrieval measurements and scaling decisions](docs/performance.md). `METIS_BENCHMARK_ENABLED=true mise run benchmark-retrieval` measures exact retrieval against an explicitly configured, isolated PostgreSQL database and cleans up its synthetic tenants. Current measurements do not justify caching, approximate vector indexes, worker autoscaling or distributed database components.
