@@ -144,7 +144,7 @@ GPTMOCK_BASE_URL=http://host.docker.internal:8002/v1 \
 
 Open `http://localhost:8501`, create an account and organisation, upload a document, wait for indexing, then ask a question using words from that document. API documentation is at `http://localhost:8000/docs`. Keep both tunnels running while testing. Port 8002 listens inside DevPod; the workstation model forward remains on loopback.
 
-LangGraph remains deferred until a real branching workflow requires it, as specified by the architectural plan.
+LangGraph remains deferred: the current chat pipeline is linear. See [orchestration scope and future triggers](docs/orchestration.md) for the Phase 13 decision.
 
 ## CI and optional model evaluation
 
