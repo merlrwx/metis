@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: reconcile-jobs
+  namespace: metis
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 120
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: reconcile
+              image: backend:latest
+              command: [/app/.venv/bin/metis-reconcile]
+              envFrom:
+                - configMapRef:
+                    name: metis-config
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: metis-runtime
+                      key: DATABASE_URL
+                - name: REDIS_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: metis-runtime
+                      key: REDIS_URL
+                      optional: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 256Mi

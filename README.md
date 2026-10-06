@@ -98,6 +98,10 @@ GitOps updates are opt-in via repository variable `ENABLE_GITOPS=true`. Before e
 
 The reusable workflow updates dev image tags and opens a prod promotion PR. GitOps and live Flux reconciliation remain unverified until that separate repo and credentials are configured. The existing devops-app GitOps environment is unchanged.
 
+## Operations
+
+The API exposes aggregate Prometheus metrics at `/metrics`; worker metrics listen on port 9100 inside the container network. Kubernetes includes a CronJob to reconcile stale pending jobs. See [monitoring/README.md](monitoring/README.md) for dashboard import, scraping, alert rules, metric semantics and recovery steps. Request responses include `X-Request-ID`; structured lifecycle logs identify jobs without recording document text or prompts.
+
 ## Local LLM testing
 
 Metis uses LangChain `ChatOpenAI` with the existing GPTMock bridge. From the workstation, forward the read-only service to port 8001:

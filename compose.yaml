@@ -87,6 +87,7 @@ services:
       OBJECT_STORAGE_BACKEND: local
       OBJECT_STORAGE_LOCAL_DIR: /data/metis-objects
       EMBEDDING_PROVIDER: hashing
+      METIS_WORKER_METRICS_PORT: "9100"
     volumes:
       - metis-objects:/data/metis-objects
 

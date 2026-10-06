@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-metrics
+  namespace: metis
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9100"
+spec:
+  selector:
+    component: worker
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: metrics

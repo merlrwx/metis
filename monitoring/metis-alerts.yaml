@@ -1,0 +1,27 @@
+groups:
+  - name: metis
+    rules:
+      - alert: MetisSustainedIngestionFailure
+        expr: sum(increase(metis_jobs_failed_total[10m])) >= 3 and sum(rate(metis_jobs_failed_total[10m])) / clamp_min(sum(rate(metis_jobs_started_total[10m])), 0.001) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Sustained Metis ingestion failures
+          description: Inspect job_attempt_failed logs and provider or storage availability.
+      - alert: MetisWorkerUnavailable
+        expr: max(metis_active_workers) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: No Metis worker heartbeat
+          description: Check worker pods, Redis connectivity and worker startup logs.
+      - alert: MetisOldestJobAge
+        expr: max(metis_oldest_message_age_seconds) > 600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Metis waiting job age exceeds ten minutes
+          description: Inspect queue depth, workers and reconciliation CronJob failures.

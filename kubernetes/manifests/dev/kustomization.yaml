@@ -7,6 +7,7 @@ resources:
   - redis.yaml
   - database-secret.yaml
   - runtime-config.yaml
+  - ../base/reconcile
   - backend
   - worker
   - frontend

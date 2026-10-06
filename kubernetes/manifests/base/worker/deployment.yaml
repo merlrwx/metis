@@ -10,6 +10,9 @@ spec:
       component: worker
   template:
     metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
       labels:
         component: worker
     spec:
@@ -30,7 +33,12 @@ spec:
             - secretRef:
                 name: metis-object-storage
                 optional: true
+          ports:
+            - name: metrics
+              containerPort: 9100
           env:
+            - name: METIS_WORKER_METRICS_PORT
+              value: "9100"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

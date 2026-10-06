@@ -11,6 +11,7 @@ dependencies = [
     "fastapi>=0.141.1",
     "langchain-openai>=1.6.7",
     "pgvector>=0.4.2",
+    "prometheus-client>=0.26.0",
     "psycopg[binary]>=3.2",
     "pwdlib[argon2]>=0.3.1",
     "pyjwt>=2.15.1",
@@ -30,6 +31,7 @@ markers = ["external_worker: starts a separate background worker process"]
 [project.scripts]
 metis-api = "backend.main:main"
 metis-worker = "backend.worker:main"
+metis-reconcile = "backend.reconcile:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/backend"]

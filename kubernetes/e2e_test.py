@@ -443,6 +443,30 @@ def test_backend(base_url):
 
     test_horizontal_scaling(base_url, organisation["id"])
     test_worker_graceful_shutdown(base_url, organisation["id"])
+    run(
+        "kubectl",
+        "create",
+        "job",
+        "--from=cronjob/dev-reconcile-jobs",
+        "dev-reconcile-e2e",
+        "--namespace",
+        NAMESPACE,
+    )
+    run(
+        "kubectl",
+        "wait",
+        "--for=condition=complete",
+        "job/dev-reconcile-e2e",
+        "--namespace",
+        NAMESPACE,
+        "--timeout=120s",
+    )
+    metrics = requests.get(f"{base_url}/metrics", timeout=10)
+    require(metrics.status_code == 200, "API metrics unavailable")
+    require("metis_queue_depth" in metrics.text, "Queue metrics missing")
+    require(
+        "metis_retrieval_duration_seconds" in metrics.text, "Retrieval metrics missing"
+    )
 
     requests.post(
         f"{base_url}/api/auth/register",

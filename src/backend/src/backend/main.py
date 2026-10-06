@@ -21,7 +21,7 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend import auth, chat, embeddings
+from backend import auth, chat, embeddings, observability
 from backend.database import get_session
 from backend.models import (
     IngestionJob,
@@ -76,12 +76,28 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             await broker.shutdown()
 
 
+observability.configure_logging()
 app = FastAPI(title="Metis API", version="0.1.0", lifespan=lifespan)
+app.middleware("http")(observability.request_metrics)
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics(session: Annotated[Session, Depends(get_session)]):
+    from fastapi.responses import Response
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+    observability.refresh_database_metrics(session)
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 async def publish_job(session: Session, job: IngestionJob) -> None:
     try:
         await process_ingestion_job.kiq(str(job.id), str(job.organisation_id))
+        observability.log_event(
+            "job_published",
+            job_id=str(job.id),
+            organisation_id=str(job.organisation_id),
+        )
     except Exception as error:
         job_service.record_enqueue_failure(
             session,

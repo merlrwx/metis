@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend import observability
 from backend.models import Chunk, Document, DocumentVersion, Organisation, Source
 
 
@@ -106,6 +107,7 @@ def get_document(
     )
 
 
+@observability.RETRIEVAL_DURATION.time()
 def search_chunks(
     session: Session,
     organisation_id: uuid.UUID,

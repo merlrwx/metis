@@ -315,3 +315,46 @@ def test_uploaded_pdf_is_extracted_and_reuses_its_indexed_version(
     finally:
         stop_worker(worker)
         redis.close()
+
+
+def test_pending_job_reconciliation_delivers_to_worker_and_exports_metrics():
+    from datetime import UTC, datetime, timedelta
+    from urllib.request import urlopen
+    from uuid import UUID
+
+    from backend.models import IngestionJob
+
+    redis = Redis.from_url(os.environ["REDIS_URL"])
+    reset_stream(redis)
+    worker = start_worker(METIS_WORKER_METRICS_PORT="19101")
+    try:
+        with authenticated_client(app) as client:
+            organisation = client.post(
+                "/api/organisations", json={"name": "Reconciliation"}
+            ).json()
+            with database.SessionLocal() as session:
+                job = IngestionJob(
+                    organisation_id=UUID(organisation["id"]),
+                    status="pending",
+                    created_at=datetime.now(UTC) - timedelta(minutes=10),
+                )
+                session.add(job)
+                session.commit()
+                job_id = str(job.id)
+            reconcile = Path(sys.executable).with_name("metis-reconcile")
+            subprocess.run(
+                [str(reconcile)], check=True, capture_output=True, timeout=20
+            )
+            completed = wait_for_status(client, organisation["id"], job_id, "completed")
+            assert completed["attempts"] == 1
+            subprocess.run(
+                [str(reconcile)], check=True, capture_output=True, timeout=20
+            )
+            assert job_status(client, organisation["id"], job_id)["attempts"] == 1
+            with urlopen("http://127.0.0.1:19101/metrics", timeout=5) as response:
+                metrics = response.read().decode()
+            assert "metis_jobs_completed_total 1.0" in metrics
+            assert "metis_job_duration_seconds_count 1.0" in metrics
+    finally:
+        stop_worker(worker)
+        reset_stream(redis)

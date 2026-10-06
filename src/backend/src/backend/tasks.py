@@ -1,14 +1,19 @@
 import asyncio
 import os
 import uuid
+from time import perf_counter
 
 from sqlalchemy import delete, select
+from taskiq import TaskiqEvents
 
-from backend import database, embeddings
+from backend import database, embeddings, observability, worker_monitor
 from backend.models import Chunk, DocumentVersion
 from backend.queue import broker
 from backend.services import chunking, ingestion, jobs
 from backend.storage import get_object_storage
+
+broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, worker_monitor.start)
+broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, worker_monitor.stop)
 
 
 @broker.task
@@ -35,6 +40,13 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
     if attempt is None:
         return
 
+    started = perf_counter()
+    observability.JOBS_STARTED.inc()
+    if attempt > 1:
+        observability.RETRIES.inc()
+    observability.log_event(
+        "job_started", job_id=job_id, organisation_id=organisation_id, attempt=attempt
+    )
     try:
         if document_version_id is None:
             await asyncio.sleep(
@@ -67,6 +79,7 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
             if not text_chunks:
                 raise RuntimeError("Document extraction produced no text chunks")
             provider = embeddings.get_embedding_provider()
+            observability.EMBEDDINGS.inc()
             vectors = await asyncio.to_thread(
                 provider.embed_documents, [chunk.content for chunk in text_chunks]
             )
@@ -108,7 +121,17 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
                     for index, (chunk, vector) in enumerate(zip(text_chunks, vectors))
                 )
                 jobs.mark_indexed(session, parsed_organisation_id, parsed_job_id)
+            observability.DOCUMENTS.inc()
+            observability.CHUNKS.inc(len(text_chunks))
     except Exception as error:
+        observability.JOBS_FAILED.inc()
+        observability.log_event(
+            "job_attempt_failed",
+            job_id=job_id,
+            organisation_id=organisation_id,
+            attempt=attempt,
+            error_type=type(error).__name__,
+        )
         with database.SessionLocal() as session:
             should_retry = jobs.record_failure(
                 session, parsed_organisation_id, parsed_job_id, str(error)
@@ -116,7 +139,14 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
         if should_retry:
             raise
         return
+    finally:
+        observability.JOB_DURATION.observe(perf_counter() - started)
 
     if document_version_id is None:
         with database.SessionLocal() as session:
             jobs.mark_completed(session, parsed_organisation_id, parsed_job_id)
+
+    observability.JOBS_COMPLETED.inc()
+    observability.log_event(
+        "job_completed", job_id=job_id, organisation_id=organisation_id, attempt=attempt
+    )

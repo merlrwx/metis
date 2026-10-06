@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass
 
+from backend import observability
 from backend.chat import ChatCompletion, ChatProvider
 from backend.services.knowledge import SearchHit
 
@@ -18,6 +19,7 @@ class GroundedAnswer:
     completion: ChatCompletion | None
 
 
+@observability.RAG_DURATION.time()
 def answer_question(
     question: str,
     history: list[tuple[str, str]],
@@ -34,7 +36,8 @@ def answer_question(
     messages = [("system", system_prompt)]
     messages.extend(history[-MAX_HISTORY_MESSAGES:])
     messages.append(("human", question))
-    completion = provider.generate(messages)
+    with observability.LLM_DURATION.time():
+        completion = provider.generate(messages)
 
     used = []
 
