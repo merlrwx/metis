@@ -27,6 +27,8 @@ from backend import auth, chat, embeddings, observability
 from backend.database import get_session
 from backend.models import (
     IngestionJob,
+    Message,
+    MessageFeedback,
     Organisation,
     OrganisationMembership,
     User,
@@ -39,13 +41,17 @@ from backend.schemas import (
     ChatUsageView,
     CitationView,
     ConversationMessageView,
+    ConversationRename,
+    ConversationSummary,
     ConversationView,
     CurrentUserView,
     DocumentCreate,
     DocumentView,
+    FeedbackWrite,
     JobView,
     KnowledgeGroupView,
     KnowledgeGroupWrite,
+    KnowledgeScope,
     MemberAdd,
     MembershipView,
     OrganisationCreate,
@@ -62,7 +68,16 @@ from backend.schemas import (
     UserRegister,
     UserView,
 )
-from backend.services import audit, conversations, groups, ingestion, knowledge, rag
+from backend.services import (
+    audit,
+    chat_requests,
+    conversations,
+    followups,
+    groups,
+    ingestion,
+    knowledge,
+    rag,
+)
 from backend.services import documents as document_service
 from backend.services import jobs as job_service
 from backend.storage import get_object_storage
@@ -776,9 +791,7 @@ def delete_knowledge_group(
     session.commit()
 
 
-def request_scope(
-    session: Session, organisation_id: UUID, payload: SearchRequest | ChatRequest
-):
+def request_scope(session: Session, organisation_id: UUID, payload: KnowledgeScope):
     sources = payload.source_ids
     documents = payload.document_ids
     if payload.group_id is not None:
@@ -896,102 +909,183 @@ def chat_with_knowledge(
     if session.get(Organisation, organisation_id) is None:
         raise HTTPException(status_code=404, detail="Organisation not found")
 
-    source_ids, document_ids = request_scope(session, organisation_id, payload)
     conversation = None
     conversation_id = payload.conversation_id or uuid4()
     if payload.conversation_id is not None:
         conversation = conversations.get_conversation(
-            session,
-            organisation_id,
-            payload.conversation_id,
-            actor.user_id,
-            actor.role,
+            session, organisation_id, payload.conversation_id, actor.user_id, actor.role
         )
         if conversation is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
-        history = conversations.get_history(
+    scope_fields = {
+        "source_id",
+        "document_id",
+        "source_ids",
+        "document_ids",
+        "group_id",
+    }
+    effective = payload
+    if conversation is not None and not payload.model_fields_set.intersection(
+        scope_fields
+    ):
+        effective = KnowledgeScope.model_validate(conversation.scope)
+    source_ids, document_ids = request_scope(session, organisation_id, effective)
+    scope = {"document_ids": document_ids} if document_ids is not None else {}
+    if effective.group_id is not None:
+        scope["group_id"] = str(effective.group_id)
+    elif source_ids is not None:
+        scope["source_ids"] = source_ids
+    scope = KnowledgeScope.model_validate(scope).model_dump(
+        mode="json", exclude_none=True
+    )
+    try:
+        fingerprint, saved_request = chat_requests.begin(
+            session,
+            organisation_id,
+            actor.user_id,
+            payload.request_id,
+            payload.model_dump(mode="json"),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    if saved_request is not None:
+        if (
+            conversations.get_conversation(
+                session,
+                organisation_id,
+                saved_request.conversation_id,
+                actor.user_id,
+                actor.role,
+            )
+            is None
+        ):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        knowledge.ensure_index_ready(session, organisation_id)
+        response = ChatResponse.model_validate(saved_request.response)
+        if not conversations.citations_available(
+            session,
+            organisation_id,
+            [citation.model_dump(mode="json") for citation in response.citations],
+            source_ids,
+            document_ids,
+        ):
+            response.answer = "The original evidence is no longer available in this scope. Please ask a new question."
+            response.citations = []
+            response.outcome = "insufficient_evidence"
+        return response
+    history = (
+        conversations.get_history(
             session,
             organisation_id,
             conversation_id,
             rag.MAX_HISTORY_MESSAGES,
-        )
-    else:
-        history = []
-
-    try:
-        embedding_provider = embeddings.get_embedding_provider()
-        query_embedding = embedding_provider.embed_query(payload.message)
-    except embeddings.InvalidEmbeddingInput as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    except (RuntimeError, OSError, TypeError, ValueError) as error:
-        raise HTTPException(
-            status_code=503, detail="Embedding provider is unavailable"
-        ) from error
-
-    hits = knowledge.search_chunks(
-        session,
-        organisation_id,
-        query_embedding,
-        embedding_provider.model_id,
-        payload.top_k,
-        document_id=payload.document_id,
-        source_ids=source_ids,
-        document_ids=document_ids,
-        expand_neighbors=True,
-        query_text=payload.message,
-    )
-    complete_scope = False
-    if rag.needs_complete_scope(payload.message):
-        complete = knowledge.complete_scoped_evidence(
-            session,
-            organisation_id,
-            embedding_provider.model_id,
             source_ids,
             document_ids,
         )
-        if complete is not None:
-            hits = complete
-            complete_scope = True
-    session.commit()
-    has_evidence = bool(
-        rag.supporting_evidence(hits, payload.document_id, document_ids)
+        if conversation is not None
+        else []
     )
-    try:
-        chat_provider = (
-            chat.get_chat_provider()
-            if has_evidence
-            and (not rag.needs_complete_scope(payload.message) or complete_scope)
-            else None
+    retrieval_query = followups.rewrite(payload.message, history)
+    if retrieval_query is None:
+        grounded = rag.GroundedAnswer(
+            "Which document, topic or pay period does your follow-up refer to?",
+            [],
+            None,
+            "clarification_needed",
         )
-        grounded = rag.answer_question(
-            payload.message,
-            history,
-            hits,
-            chat_provider,
-            document_id=payload.document_id,
+    else:
+        try:
+            embedding_provider = embeddings.get_embedding_provider()
+            query_embedding = embedding_provider.embed_query(retrieval_query)
+        except embeddings.InvalidEmbeddingInput as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except (RuntimeError, OSError, TypeError, ValueError) as error:
+            raise HTTPException(
+                status_code=503, detail="Embedding provider is unavailable"
+            ) from error
+
+        hits = knowledge.search_chunks(
+            session,
+            organisation_id,
+            query_embedding,
+            embedding_provider.model_id,
+            payload.top_k,
+            source_ids=source_ids,
             document_ids=document_ids,
-            complete_scope=complete_scope,
+            expand_neighbors=True,
+            query_text=retrieval_query,
         )
-    except chat.ChatProviderError as error:
-        raise HTTPException(
-            status_code=503, detail="Chat provider is unavailable"
-        ) from error
+        complete_scope = False
+        if rag.needs_complete_scope(payload.message):
+            complete = knowledge.complete_scoped_evidence(
+                session,
+                organisation_id,
+                embedding_provider.model_id,
+                source_ids,
+                document_ids,
+            )
+            if complete is not None:
+                hits = complete
+                complete_scope = True
+        has_evidence = bool(
+            rag.supporting_evidence(hits, payload.document_id, document_ids)
+        )
+        try:
+            chat_provider = (
+                chat.get_chat_provider()
+                if has_evidence
+                and (not rag.needs_complete_scope(payload.message) or complete_scope)
+                else None
+            )
+            grounded = rag.answer_question(
+                payload.message,
+                history,
+                hits,
+                chat_provider,
+                document_ids=document_ids,
+                complete_scope=complete_scope,
+            )
+        except chat.ChatProviderError as error:
+            raise HTTPException(
+                status_code=503, detail="Chat provider is unavailable"
+            ) from error
 
     citations = [citation_view(hit) for hit in grounded.citations]
-    completion = grounded.completion
-    conversations.save_turn(
+    if not conversations.citations_available(
         session,
         organisation_id,
-        actor.user_id,
-        conversation,
-        conversation_id,
-        payload.message,
-        grounded.content,
         [citation.model_dump(mode="json") for citation in citations],
-        completion.model_id if completion else None,
-        completion.input_tokens if completion else None,
-        completion.output_tokens if completion else None,
-    )
+        source_ids,
+        document_ids,
+    ):
+        grounded = rag.GroundedAnswer(
+            "The evidence changed while preparing this answer. Please ask again to use the current knowledge.",
+            [],
+            grounded.completion,
+            "insufficient_evidence",
+        )
+        citations = []
+    completion = grounded.completion
+    try:
+        conversations.save_turn(
+            session,
+            organisation_id,
+            actor.user_id,
+            conversation,
+            conversation_id,
+            payload.message,
+            grounded.content,
+            [citation.model_dump(mode="json") for citation in citations],
+            completion.model_id if completion else None,
+            completion.input_tokens if completion else None,
+            completion.output_tokens if completion else None,
+            scope=scope,
+            outcome=grounded.outcome,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=409, detail="Conversation changed; start a new conversation"
+        ) from error
     audit.record_event(
         session,
         organisation_id,
@@ -1001,11 +1095,23 @@ def chat_with_knowledge(
         conversation_id,
         {
             "citation_count": len(citations),
+            "retrieval_rewritten": retrieval_query is not None
+            and retrieval_query != payload.message,
+            "request_id": str(payload.request_id) if payload.request_id else None,
             "model_id": completion.model_id if completion else None,
         },
     )
-    session.commit()
-    return ChatResponse(
+    response = ChatResponse(
+        message_id=session.scalar(
+            select(Message.id)
+            .where(
+                Message.organisation_id == organisation_id,
+                Message.conversation_id == conversation_id,
+                Message.role == "assistant",
+            )
+            .order_by(Message.message_index.desc())
+            .limit(1)
+        ),
         conversation_id=conversation_id,
         answer=grounded.content,
         outcome=grounded.outcome,
@@ -1016,6 +1122,111 @@ def chat_with_knowledge(
             output_tokens=completion.output_tokens if completion else None,
         ),
     )
+    chat_requests.finish(
+        session,
+        organisation_id,
+        actor.user_id,
+        payload.request_id,
+        fingerprint,
+        response.model_dump(mode="json"),
+    )
+    session.commit()
+    return response
+
+
+@app.get(
+    "/api/organisations/{organisation_id}/conversations",
+    response_model=list[ConversationSummary],
+)
+def list_conversations(
+    organisation_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_membership)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+):
+    return conversations.accessible_conversations(
+        session, organisation_id, actor.user_id, actor.role, limit, offset
+    )
+
+
+@app.patch(
+    "/api/organisations/{organisation_id}/conversations/{conversation_id}",
+    response_model=ConversationSummary,
+)
+def rename_conversation(
+    organisation_id: UUID,
+    conversation_id: UUID,
+    payload: ConversationRename,
+    session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_membership)],
+):
+    conversation = conversations.get_conversation(
+        session, organisation_id, conversation_id, actor.user_id, actor.role
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    conversation.title = payload.title
+    session.commit()
+    return conversation
+
+
+@app.delete(
+    "/api/organisations/{organisation_id}/conversations/{conversation_id}",
+    status_code=204,
+)
+def delete_conversation(
+    organisation_id: UUID,
+    conversation_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_membership)],
+):
+    conversation = conversations.get_conversation(
+        session, organisation_id, conversation_id, actor.user_id, actor.role
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    session.delete(conversation)
+    session.commit()
+
+
+@app.put(
+    "/api/organisations/{organisation_id}/conversations/{conversation_id}/messages/{message_id}/feedback",
+    status_code=204,
+)
+def record_feedback(
+    organisation_id: UUID,
+    conversation_id: UUID,
+    message_id: UUID,
+    payload: FeedbackWrite,
+    session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_membership)],
+):
+    conversation = conversations.get_conversation(
+        session, organisation_id, conversation_id, actor.user_id, actor.role
+    )
+    message = session.scalar(
+        select(Message).where(
+            Message.id == message_id,
+            Message.organisation_id == organisation_id,
+            Message.conversation_id == conversation_id,
+            Message.role == "assistant",
+        )
+    )
+    if conversation is None or message is None:
+        raise HTTPException(status_code=404, detail="Answer not found")
+    feedback = session.get(
+        MessageFeedback, (message_id, actor.user_id)
+    ) or MessageFeedback(
+        message_id=message_id, user_id=actor.user_id, organisation_id=organisation_id
+    )
+    feedback.vote, feedback.reason, feedback.comment = (
+        payload.vote,
+        payload.reason,
+        payload.comment,
+    )
+    session.add(feedback)
+    session.commit()
 
 
 @app.get(
@@ -1034,17 +1245,25 @@ def get_conversation(
     )
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    message_views = []
+    for message in conversations.list_messages(
+        session, organisation_id, conversation_id, limit
+    ):
+        view = ConversationMessageView.model_validate(message)
+        if message.role == "assistant" and not conversations.citations_available(
+            session, organisation_id, message.citations
+        ):
+            view.content = "The evidence for this answer is no longer available."
+            view.citations = []
+            view.outcome = "insufficient_evidence"
+        message_views.append(view)
     return ConversationView(
         id=conversation.id,
         organisation_id=conversation.organisation_id,
         title=conversation.title,
+        scope=conversation.scope,
         created_at=conversation.created_at,
-        messages=[
-            ConversationMessageView.model_validate(message)
-            for message in conversations.list_messages(
-                session, organisation_id, conversation_id, limit
-            )
-        ],
+        messages=message_views,
     )
 
 

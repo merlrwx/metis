@@ -1,5 +1,6 @@
 import os
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 import streamlit as st
 from api_client import ApiError, MetisApi
@@ -57,6 +58,9 @@ def clear_session() -> None:
         "metis_chat_org",
         "metis_chat_id",
         "metis_chat_messages",
+        "metis_pending_chat",
+        "metis_retry_text",
+        "metis_chat_error",
         "active_organisation",
     ):
         st.session_state.pop(key, None)
@@ -548,12 +552,100 @@ def render_chat(organisation_id: str, token: str) -> None:
     st.title("Chat")
     if st.session_state.get("metis_chat_org") != organisation_id:
         st.session_state["metis_chat_org"] = organisation_id
+        st.session_state.pop("metis_pending_chat", None)
+        st.session_state.pop("metis_retry_text", None)
+        st.session_state.pop("metis_chat_error", None)
         st.session_state["metis_chat_id"] = None
         st.session_state["metis_chat_messages"] = []
     if st.button("New conversation", key="new_conversation"):
         st.session_state["metis_chat_id"] = None
         st.session_state["metis_chat_messages"] = []
+        st.session_state.pop("metis_pending_chat", None)
+        for suffix in ("document", "group", "sources", "documents"):
+            st.session_state.pop(f"chat_{suffix}_{organisation_id}", None)
         st.rerun()
+
+    current_conversation = st.session_state.get("metis_chat_id")
+    if current_conversation:
+        refreshed = request_json(
+            "GET",
+            f"/api/organisations/{organisation_id}/conversations/{current_conversation}",
+            token,
+        )
+        if refreshed is None:
+            st.session_state["metis_chat_messages"] = []
+            return
+        st.session_state["metis_chat_messages"] = refreshed["messages"]
+    st.caption(
+        "Conversations are visible to their creator and organisation owners/admins."
+    )
+    with st.expander("Saved conversations"):
+        offset = st.session_state.get(f"conversation_offset_{organisation_id}", 0)
+        saved = request_json(
+            "GET",
+            f"/api/organisations/{organisation_id}/conversations?limit=20&offset={offset}",
+            token,
+        )
+        if saved is None:
+            return
+        titles = {item["id"]: item["title"] for item in saved}
+        selected = st.selectbox(
+            "Conversation",
+            [None, *titles],
+            format_func=lambda value: (
+                "Choose a conversation" if value is None else titles[value]
+            ),
+            key=f"saved_conversation_{organisation_id}",
+        )
+        if selected is not None:
+            if st.button("Open conversation"):
+                restored = request_json(
+                    "GET",
+                    f"/api/organisations/{organisation_id}/conversations/{selected}",
+                    token,
+                )
+                if restored is not None:
+                    st.session_state["metis_chat_id"] = restored["id"]
+                    st.session_state["metis_chat_messages"] = restored["messages"]
+                    st.session_state.pop("metis_pending_chat", None)
+                    restored_scope = restored.get("scope", {})
+                    for suffix, value in (
+                        ("document", restored_scope.get("document_id")),
+                        ("group", restored_scope.get("group_id")),
+                        ("sources", restored_scope.get("source_ids", [])),
+                        ("documents", restored_scope.get("document_ids", [])),
+                    ):
+                        st.session_state[f"chat_{suffix}_{organisation_id}"] = value
+                    st.rerun()
+            with st.form("rename_conversation"):
+                title = st.text_input("Conversation name", value=titles[selected])
+                rename = st.form_submit_button("Rename conversation")
+                remove = st.form_submit_button("Delete conversation")
+            if rename or remove:
+                try:
+                    api.request(
+                        "DELETE" if remove else "PATCH",
+                        f"/api/organisations/{organisation_id}/conversations/{selected}",
+                        token=token,
+                        payload=None if remove else {"title": title},
+                    )
+                    if remove and st.session_state.get("metis_chat_id") == selected:
+                        st.session_state["metis_chat_id"] = None
+                        st.session_state["metis_chat_messages"] = []
+                    rerun_with_notice(
+                        "Conversation deleted." if remove else "Conversation renamed."
+                    )
+                except ApiError as error:
+                    show_api_error(error)
+        previous, following = st.columns(2)
+        if previous.button("Previous conversations", disabled=offset == 0):
+            st.session_state[f"conversation_offset_{organisation_id}"] = max(
+                0, offset - 20
+            )
+            st.rerun()
+        if following.button("Next conversations", disabled=len(saved) < 20):
+            st.session_state[f"conversation_offset_{organisation_id}"] = offset + 20
+            st.rerun()
 
     st.write("Ask a question about this organisation’s indexed knowledge.")
     documents = request_json(
@@ -566,6 +658,11 @@ def render_chat(organisation_id: str, token: str) -> None:
         for item in documents
         if item.get("ingestion_status") == "indexed"
     }
+    for identifier in st.session_state.get(f"chat_documents_{organisation_id}", []):
+        ready_documents.setdefault(
+            identifier,
+            {"title": "Unavailable document — remove this filter to continue"},
+        )
     document_id = st.selectbox(
         "Answer from",
         [None, *ready_documents],
@@ -597,6 +694,15 @@ def render_chat(organisation_id: str, token: str) -> None:
             return
         source_names = {item["id"]: item["name"] for item in sources}
         group_names = {item["id"]: item["name"] for item in groups}
+        previous_group = st.session_state.get(f"chat_group_{organisation_id}")
+        if previous_group is not None:
+            group_names.setdefault(
+                previous_group, "Unavailable group — clear this filter to continue"
+            )
+        for identifier in st.session_state.get(f"chat_sources_{organisation_id}", []):
+            source_names.setdefault(
+                identifier, "Unavailable source — remove this filter to continue"
+            )
         group_id = st.selectbox(
             "Saved group",
             [None, *group_names],
@@ -628,6 +734,23 @@ def render_chat(organisation_id: str, token: str) -> None:
         st.caption(
             "Filters narrow the search. With no filters, Metis searches all indexed knowledge."
         )
+    scope_labels = []
+    if group_id is not None:
+        scope_labels.append("Group: " + group_names[group_id])
+    elif selected_sources:
+        scope_labels.append(
+            "Sources: " + ", ".join(source_names[value] for value in selected_sources)
+        )
+    chosen_documents = selected_documents or ([document_id] if document_id else [])
+    if chosen_documents:
+        scope_labels.append(
+            "Documents: "
+            + ", ".join(ready_documents[value]["title"] for value in chosen_documents)
+        )
+    st.caption(
+        "Current scope · "
+        + (" · ".join(scope_labels) if scope_labels else "All indexed knowledge")
+    )
     for message_index, message in enumerate(
         st.session_state.get("metis_chat_messages", [])
     ):
@@ -648,29 +771,95 @@ def render_chat(organisation_id: str, token: str) -> None:
                     key_prefix=f"chat_{message_index}",
                 )
 
+            if message.get("id") and message["role"] == "assistant":
+                with st.form(f"feedback_{message['id']}"):
+                    vote = st.selectbox(
+                        "Was this helpful?",
+                        ["helpful", "problem"],
+                        format_func=lambda value: (
+                            "Helpful" if value == "helpful" else "Something is wrong"
+                        ),
+                    )
+                    reason = st.selectbox(
+                        "Reason",
+                        [
+                            None,
+                            "wrong_source",
+                            "missing_information",
+                            "incorrect_answer",
+                        ],
+                        format_func=lambda value: (
+                            "Optional"
+                            if value is None
+                            else value.replace("_", " ").title()
+                        ),
+                    )
+                    comment = st.text_input("Optional feedback", max_chars=1000)
+                    feedback_sent = st.form_submit_button("Send feedback")
+                if feedback_sent:
+                    try:
+                        api.request(
+                            "PUT",
+                            f"/api/organisations/{organisation_id}/conversations/{st.session_state['metis_chat_id']}/messages/{message['id']}/feedback",
+                            token=token,
+                            payload={
+                                "vote": vote,
+                                "reason": reason,
+                                "comment": comment or None,
+                            },
+                        )
+                        st.success("Feedback saved.")
+                    except ApiError as error:
+                        show_api_error(error)
+    pending = st.session_state.get("metis_pending_chat")
+    retry = False
+    if pending:
+        if st.session_state.get("metis_chat_error"):
+            st.error(st.session_state["metis_chat_error"])
+        retry_text = st.text_area(
+            "Question to retry", value=pending["message"], key="metis_retry_text"
+        )
+        retry = st.button("Retry question")
     prompt = st.chat_input("Ask about your documents")
+    if retry:
+        prompt = retry_text
+        if prompt != pending["message"]:
+            pending = {**pending, "message": prompt, "request_id": str(uuid4())}
+
     if prompt:
+        if not retry:
+            pending = {
+                "message": prompt,
+                "conversation_id": st.session_state.get("metis_chat_id"),
+                "request_id": str(uuid4()),
+                **scope,
+            }
+        st.session_state["metis_pending_chat"] = pending
         try:
-            with st.spinner("Searching your organisation’s knowledge…"):
+            with st.spinner("Searching knowledge and preparing an answer…"):
                 response = api.request(
                     "POST",
                     f"/api/organisations/{organisation_id}/chat",
                     token=token,
-                    payload={
-                        "message": prompt,
-                        "conversation_id": st.session_state.get("metis_chat_id"),
-                        **scope,
-                    },
+                    payload=pending,
                 )
         except ApiError as error:
-            show_api_error(error)
+            if error.status_code == 401:
+                show_api_error(error)
+            else:
+                st.session_state["metis_chat_error"] = error.detail
+                st.rerun()
         else:
+            st.session_state.pop("metis_pending_chat", None)
+            st.session_state.pop("metis_chat_error", None)
+            st.session_state.pop("metis_retry_text", None)
             st.session_state["metis_chat_id"] = response["conversation_id"]
             st.session_state.setdefault("metis_chat_messages", []).extend(
                 [
                     {"role": "user", "content": prompt},
                     {
                         "role": "assistant",
+                        "id": response.get("message_id"),
                         "content": response["answer"],
                         "outcome": response.get("outcome", "answered"),
                         "citations": response.get("citations", []),

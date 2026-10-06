@@ -6,7 +6,7 @@ import pytest
 from backend.main import request_scope
 from backend.models import Chunk, Document, DocumentVersion, Organisation, Source
 from backend.schemas import SearchRequest
-from backend.services import groups, knowledge
+from backend.services import conversations, groups, knowledge
 
 from backend import database, embeddings
 
@@ -112,6 +112,15 @@ def test_multiple_sources_groups_versions_and_neighbours():
         }
         assert stale_chunk.id not in {hit.chunk.id for hit in hits}
         assert len(hits) == 4
+        citation = {
+            "chunk_id": str(hits[0].chunk.id),
+            "document_id": str(hits[0].document.id),
+        }
+        assert conversations.citations_available(session, own.id, [citation])
+        assert not conversations.citations_available(session, foreign.id, [citation])
+        assert not conversations.citations_available(
+            session, own.id, [citation], source_ids=[]
+        )
         exact_hits = knowledge.search_chunks(
             session,
             own.id,

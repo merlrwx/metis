@@ -41,7 +41,9 @@ def main():
             )
             for index, text in enumerate(case["texts"])
         ]
-        result = answer_question(case["question"], [], hits, provider)
+        result = answer_question(
+            case["question"], case.get("history", []), hits, provider
+        )
         outcomes = (
             case["outcome"] if isinstance(case["outcome"], list) else [case["outcome"]]
         )

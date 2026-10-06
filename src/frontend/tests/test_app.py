@@ -66,8 +66,29 @@ def backend_response(request, timeout=30, *, documents=None, memberships=None):
                 "configuration": {},
             }
         ]
-    elif path == f"/api/organisations/{ORG_ID}/groups" and method == "GET":
+    elif (
+        path == f"/api/organisations/{ORG_ID}/conversations"
+        and method == "GET"
+        or path == f"/api/organisations/{ORG_ID}/groups"
+        and method == "GET"
+    ):
         body = []
+    elif (
+        path == f"/api/organisations/{ORG_ID}/conversations/conversation-1"
+        and method == "GET"
+    ):
+        body = {
+            "id": "conversation-1",
+            "scope": {},
+            "messages": [
+                {"role": "user", "content": "What should staff do?"},
+                {
+                    "role": "assistant",
+                    "content": "Follow the medication policy.",
+                    "citations": [],
+                },
+            ],
+        }
     elif path == f"/api/organisations/{ORG_ID}/members":
         body = (
             [
@@ -502,3 +523,125 @@ def test_chat_multi_selection_sends_shared_scope():
     assert payloads[0]["source_ids"] == [SOURCE_ID]
     assert payloads[0]["document_ids"] == [DOC_ID]
     assert "document_id" not in payloads[0]
+
+
+def test_failed_chat_preserves_question_and_retry_request_id():
+    app = authenticated_app("Chat")
+    app.chat_input[0].set_value("What does the policy require?")
+    payloads = []
+
+    def failing(request, timeout):
+        if request.get_method() == "POST" and request.full_url.endswith("/chat"):
+            payloads.append(json.loads(request.data))
+            raise HTTPError(
+                request.full_url,
+                503,
+                "Unavailable",
+                {},
+                io.BytesIO(b'{"detail":"Chat provider is unavailable"}'),
+            )
+        return backend_response(request)
+
+    with patch("api_client.urlopen", side_effect=failing):
+        app.run()
+    assert not app.exception
+    assert (
+        app.text_area(key="metis_retry_text").value == "What does the policy require?"
+    )
+    next(button for button in app.button if button.label == "Retry question").click()
+
+    def working(request, timeout):
+        if request.get_method() == "POST" and request.full_url.endswith("/chat"):
+            payloads.append(json.loads(request.data))
+        return backend_response(request)
+
+    with patch("api_client.urlopen", side_effect=working):
+        app.run()
+    assert not app.exception
+    assert payloads[0] == payloads[1]
+    assert len(app.chat_message) == 2
+
+
+def test_reopen_restores_scope_and_allows_feedback_rename_and_delete():
+    app = AppTest.from_file(str(APP))
+    app.session_state["metis_token"] = "signed-token"
+    app.session_state["active_organisation"] = ORG_ID
+    saved = {
+        "id": "saved-1",
+        "title": "January pay",
+        "scope": {"source_ids": [SOURCE_ID], "document_ids": [DOC_ID]},
+    }
+    actions = []
+    deleted = False
+
+    def open_request(request, timeout):
+        nonlocal deleted
+        path = urlparse(request.full_url).path
+        method = request.get_method()
+        if path.endswith("/conversations") and method == "GET":
+            return io.BytesIO(json.dumps([] if deleted else [saved]).encode())
+        if path.endswith("/conversations/saved-1"):
+            if method == "GET":
+                return io.BytesIO(
+                    json.dumps(
+                        {
+                            **saved,
+                            "messages": [
+                                {
+                                    "id": "answer-1",
+                                    "role": "assistant",
+                                    "content": "Synthetic answer",
+                                    "citations": [],
+                                    "outcome": "partially_answered",
+                                }
+                            ],
+                        }
+                    ).encode()
+                )
+            actions.append((method, json.loads(request.data) if request.data else None))
+            if method == "PATCH":
+                saved["title"] = json.loads(request.data)["title"]
+            if method == "DELETE":
+                deleted = True
+            return io.BytesIO(b"{}")
+        if path.endswith("/feedback"):
+            actions.append((method, json.loads(request.data)))
+            return io.BytesIO(b"{}")
+        return backend_response(request, documents=document_response("indexed"))
+
+    with patch("api_client.urlopen", side_effect=open_request):
+        app.run()
+        app.sidebar.radio[0].set_value("Chat")
+        app.run()
+        app.selectbox(key=f"saved_conversation_{ORG_ID}").set_value("saved-1")
+        app.run()
+        next(
+            button for button in app.button if button.label == "Open conversation"
+        ).click()
+        app.run()
+        assert app.multiselect(key=f"chat_sources_{ORG_ID}").value == [SOURCE_ID]
+        assert app.multiselect(key=f"chat_documents_{ORG_ID}").value == [DOC_ID]
+        next(
+            item for item in app.selectbox if item.label == "Was this helpful?"
+        ).set_value("problem")
+        next(item for item in app.selectbox if item.label == "Reason").set_value(
+            "missing_information"
+        )
+        next(button for button in app.button if button.label == "Send feedback").click()
+        app.run()
+        next(
+            item for item in app.text_input if item.label == "Conversation name"
+        ).set_value("Payroll")
+        next(
+            button for button in app.button if button.label == "Rename conversation"
+        ).click()
+        app.run()
+        next(
+            button for button in app.button if button.label == "Delete conversation"
+        ).click()
+        app.run()
+    assert not app.exception
+    assert app.session_state["metis_chat_id"] is None
+    assert actions[0][1]["vote"] == "problem"
+    assert actions[1] == ("PATCH", {"title": "Payroll"})
+    assert actions[2] == ("DELETE", None)

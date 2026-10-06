@@ -10,7 +10,7 @@ from time import perf_counter
 from uuid import uuid4
 
 from backend.models import Organisation
-from backend.services import documents, knowledge, rag
+from backend.services import documents, followups, knowledge, rag
 from backend.storage import LocalObjectStorage
 from backend.tasks import run_ingestion_job
 from sqlalchemy import delete
@@ -71,14 +71,20 @@ async def evaluate():
             await run_ingestion_job(str(job.id), str(ids[1]))
             for case in cases:
                 started = perf_counter()
-                query = provider.embed_query(case["question"])
+                query_text = followups.rewrite(
+                    case["question"], case.get("history", [])
+                )
+                assert query_text is not None, (
+                    "Fixture follow-up has no resolvable user context"
+                )
+                query = provider.embed_query(query_text)
                 hits = knowledge.search_chunks(
                     session,
                     ids[0],
                     query,
                     provider.model_id,
                     5,
-                    query_text=case["question"],
+                    query_text=query_text,
                 )
                 assert all(hit.chunk.organisation_id == ids[0] for hit in hits)
                 assert all(hit.document.id != foreign.id for hit in hits)

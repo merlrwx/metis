@@ -99,5 +99,25 @@
       "sample"
     ],
     "citations": 0
+  },
+  {
+    "id": "followup-last-month",
+    "question": "What about last month?",
+    "history": [
+      [
+        "user",
+        "What was my AUD net payment for February 2026?"
+      ]
+    ],
+    "texts": [
+      "PAYSLIP\nPeriod: January 2026\nNet payment AUD 2000.10\nGross payment AUD 2500.00",
+      "PAYSLIP\nPeriod: February 2026\nNet payment AUD 2100.25\nGross payment AUD 2600.00"
+    ],
+    "outcome": "answered",
+    "claims": [
+      "January",
+      "2000.10"
+    ],
+    "citations": 1
   }
 ]

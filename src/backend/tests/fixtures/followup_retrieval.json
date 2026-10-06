@@ -1,0 +1,18 @@
+[
+  {
+    "id": "january",
+    "text": "PAYSLIP\nPeriod: January 2026\nNet payment AUD 2000.10\nGross payment AUD 2500.00",
+    "question": "What about last month?",
+    "history": [
+      [
+        "user",
+        "What was my net payment for February 2026?"
+      ]
+    ]
+  },
+  {
+    "id": "february",
+    "text": "PAYSLIP\nPeriod: February 2026\nNet payment AUD 2100.25\nGross payment AUD 2600.00",
+    "question": "What was my net payment for February 2026?"
+  }
+]

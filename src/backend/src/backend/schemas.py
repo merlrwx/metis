@@ -221,6 +221,7 @@ class SearchView(BaseModel):
 
 
 class ChatRequest(KnowledgeScope):
+    request_id: uuid.UUID | None = None
     message: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
     ]
@@ -248,6 +249,7 @@ class ChatUsageView(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    message_id: uuid.UUID | None = None
     outcome: Literal[
         "answered",
         "partially_answered",
@@ -262,6 +264,7 @@ class ChatResponse(BaseModel):
 
 
 class ConversationMessageView(BaseModel):
+    outcome: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -275,8 +278,31 @@ class ConversationMessageView(BaseModel):
 
 
 class ConversationView(BaseModel):
+    scope: dict[str, Any] = Field(default_factory=dict)
     id: uuid.UUID
     organisation_id: uuid.UUID
     title: str
     created_at: datetime
     messages: list[ConversationMessageView]
+
+
+class ConversationSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    title: str
+    created_at: datetime
+    scope: dict[str, Any]
+
+
+class ConversationRename(BaseModel):
+    title: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)
+    ]
+
+
+class FeedbackWrite(BaseModel):
+    vote: Literal["helpful", "problem"]
+    reason: (
+        Literal["wrong_source", "missing_information", "incorrect_answer"] | None
+    ) = None
+    comment: str | None = Field(default=None, max_length=1000)

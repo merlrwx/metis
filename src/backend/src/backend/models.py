@@ -289,11 +289,15 @@ class Conversation(Timestamped, Base):
     title: Mapped[str] = mapped_column(
         String(512), nullable=False, default="New conversation"
     )
+    scope: Mapped[dict[str, Any]] = mapped_column(
+        JSON_OBJECT, nullable=False, default=dict
+    )
 
 
 class Message(Timestamped, Base):
     __tablename__ = "messages"
     __table_args__ = (
+        UniqueConstraint("id", "organisation_id"),
         UniqueConstraint(
             "conversation_id", "message_index", name="uq_message_conversation_index"
         ),
@@ -313,6 +317,7 @@ class Message(Timestamped, Base):
     conversation_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     message_index: Mapped[int] = mapped_column(Integer, nullable=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False)
+    outcome: Mapped[str | None] = mapped_column(String(32))
     content: Mapped[str] = mapped_column(nullable=False)
     citations: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON_OBJECT, nullable=False, default=list
@@ -320,3 +325,41 @@ class Message(Timestamped, Base):
     model_id: Mapped[str | None] = mapped_column(String(255))
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
+
+
+class ChatRequestRecord(Base):
+    __tablename__ = "chat_request_records"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["conversation_id", "organisation_id"],
+            ["conversations.id", "conversations.organisation_id"],
+            ondelete="CASCADE",
+        ),
+    )
+    organisation_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    request_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    response: Mapped[dict[str, Any]] = mapped_column(JSON_OBJECT, nullable=False)
+
+
+class MessageFeedback(Timestamped, Base):
+    __tablename__ = "message_feedback"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["message_id", "organisation_id"],
+            ["messages.id", "messages.organisation_id"],
+            ondelete="CASCADE",
+        ),
+    )
+    message_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    organisation_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    vote: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(32))
+    comment: Mapped[str | None] = mapped_column(String(1000))
