@@ -232,6 +232,19 @@ def test_horizontal_scaling(base_url, organisation_id):
 
 def test_worker_graceful_shutdown(base_url, organisation_id):
     worker = "deployment/dev-worker"
+    # Deployment readiness excludes terminating pods, which can still consume
+    # jobs with the old delay. Drain them before starting the delayed worker.
+    run("kubectl", "scale", worker, "--replicas=0", "--namespace", NAMESPACE)
+    run(
+        "kubectl",
+        "wait",
+        "--for=delete",
+        "pod",
+        "--selector=component=worker",
+        "--namespace",
+        NAMESPACE,
+        "--timeout=120s",
+    )
     run(
         "kubectl",
         "set",
@@ -242,6 +255,7 @@ def test_worker_graceful_shutdown(base_url, organisation_id):
         NAMESPACE,
     )
     try:
+        run("kubectl", "scale", worker, "--replicas=1", "--namespace", NAMESPACE)
         wait_for_deployment("dev-worker", 1)
         job = api(
             base_url,
@@ -251,8 +265,8 @@ def test_worker_graceful_shutdown(base_url, organisation_id):
             202,
             {"Idempotency-Key": "metis-graceful-worker-shutdown"},
         )
-        running = wait_for_job(base_url, organisation_id, job["id"], "running")
-        require(running["attempts"] == 1, "Graceful shutdown job did not start once")
+        processing = wait_for_job(base_url, organisation_id, job["id"], "processing")
+        require(processing["attempts"] == 1, "Graceful shutdown job did not start once")
         run("kubectl", "scale", worker, "--replicas=0", "--namespace", NAMESPACE)
         completed = wait_for_job(base_url, organisation_id, job["id"], "completed")
         require(

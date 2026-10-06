@@ -122,4 +122,22 @@ The smoke test uses `gpt-5.6-luna`, which is currently advertised by the bridge.
 
 The GitOps dev overlay uses `http://chatmock.hermes.svc.cluster.local:8000/v1` from inside the homelab cluster. The disposable k3d overlay never calls a live model during its tests; set `GPTMOCK_BASE_URL` to a reachable endpoint before using chat there. A DevPod has its own network namespace: its localhost is not the workstation. When running the backend directly inside the DevPod, use `http://127.0.0.1:8001/v1` through the reverse tunnel above.
 
+For Compose inside DevPod, the reverse tunnel must also accept connections from its Docker containers. Keep the workstation service forward running, then run this in a second workstation terminal:
+
+```bash
+devpod ssh metis --start-services=false \
+  --reverse-forward-ports 0.0.0.0:8002:127.0.0.1:8001 \
+  -L 8501:127.0.0.1:8501 -L 8000:127.0.0.1:8000 \
+  --command 'sleep 86400'
+```
+
+In another DevPod shell, start the app:
+
+```bash
+GPTMOCK_BASE_URL=http://host.docker.internal:8002/v1 \
+  mise exec -- docker compose up --build -d --wait
+```
+
+Open `http://localhost:8501`, create an account and organisation, upload a document, wait for indexing, then ask a question using words from that document. API documentation is at `http://localhost:8000/docs`. Keep both tunnels running while testing. Port 8002 listens inside DevPod; the workstation model forward remains on loopback.
+
 LangGraph remains deferred until a real branching workflow requires it, as specified by the architectural plan.
