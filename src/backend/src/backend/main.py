@@ -716,6 +716,13 @@ def chat_with_knowledge(
     if session.get(Organisation, organisation_id) is None:
         raise HTTPException(status_code=404, detail="Organisation not found")
 
+    if (
+        payload.document_id is not None
+        and knowledge.get_document(session, organisation_id, payload.document_id)
+        is None
+    ):
+        raise HTTPException(status_code=404, detail="Document not found")
+
     conversation = None
     conversation_id = payload.conversation_id or uuid4()
     if payload.conversation_id is not None:
@@ -753,12 +760,19 @@ def chat_with_knowledge(
         query_embedding,
         embedding_provider.model_id,
         payload.top_k,
+        document_id=payload.document_id,
     )
     session.commit()
-    has_evidence = any(hit.score >= rag.MIN_RETRIEVAL_SCORE for hit in hits)
+    has_evidence = bool(rag.supporting_evidence(hits, payload.document_id))
     try:
         chat_provider = chat.get_chat_provider() if has_evidence else None
-        grounded = rag.answer_question(payload.message, history, hits, chat_provider)
+        grounded = rag.answer_question(
+            payload.message,
+            history,
+            hits,
+            chat_provider,
+            document_id=payload.document_id,
+        )
     except chat.ChatProviderError as error:
         raise HTTPException(
             status_code=503, detail="Chat provider is unavailable"

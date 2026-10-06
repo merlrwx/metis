@@ -456,3 +456,26 @@ def test_microsoft365_source_sync_shows_progress_and_can_retry():
         app.run()
     assert not app.exception and requests == ["POST"]
     assert any("synchronization queued" in item.value for item in app.success)
+
+
+def test_chat_selects_ready_document_and_explains_missing_sources():
+    ready = document_response("indexed")
+    ready[0]["title"] = "Payslip"
+    app = authenticated_app("Chat", documents=ready)
+    app.selectbox(key=f"chat_document_{ORG_ID}").select("Payslip")
+    app.chat_input[0].set_value("How much did I get paid in 2 weeks?")
+    payloads = []
+
+    def open_request(request, timeout):
+        if request.get_method() == "POST" and request.full_url.endswith("/chat"):
+            payloads.append(json.loads(request.data))
+        return backend_response(request, documents=ready)
+
+    with patch("api_client.urlopen", side_effect=open_request):
+        app.run()
+    assert not app.exception
+    assert payloads[0]["document_id"] == DOC_ID
+    assert any(
+        "No supporting document sources were returned" in item.value
+        for item in app.caption
+    )

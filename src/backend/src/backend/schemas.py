@@ -202,6 +202,7 @@ class ChatRequest(BaseModel):
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
     ]
     conversation_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
     top_k: int = Field(default=5, ge=1, le=20)
 
 

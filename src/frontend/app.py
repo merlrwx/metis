@@ -422,7 +422,7 @@ def render_knowledge(
 
 def render_citations(citations: list[dict]) -> None:
     if not citations:
-        st.caption("No document source was needed for this answer.")
+        st.caption("No supporting document sources were returned.")
         return
     st.caption(f"Sources · {len(citations)}")
     for index, citation in enumerate(citations, start=1):
@@ -459,13 +459,42 @@ def render_chat(organisation_id: str, token: str) -> None:
         st.rerun()
 
     st.write("Ask a question about this organisation’s indexed knowledge.")
+    documents = request_json(
+        "GET", f"/api/organisations/{organisation_id}/documents", token
+    )
+    if documents is None:
+        return
+    ready_documents = {
+        item["id"]: item
+        for item in documents
+        if item.get("ingestion_status") == "indexed"
+    }
+    document_id = st.selectbox(
+        "Answer from",
+        [None, *ready_documents],
+        format_func=lambda value: (
+            "All indexed documents"
+            if value is None
+            else ready_documents[value]["title"]
+        ),
+        key=f"chat_document_{organisation_id}",
+        help="Choose a document to ask directly about its contents, such as a payslip's net payment.",
+    )
+    if document_id is not None:
+        st.caption(
+            "Answers will use only this document. Start a new conversation when changing topics."
+        )
+    else:
+        st.caption(
+            "For a question about one file, select it above to use its contents directly."
+        )
     for message in st.session_state.get("metis_chat_messages", []):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             if message.get("citations") is not None:
                 render_citations(message["citations"])
 
-    prompt = st.chat_input("Ask about a policy or procedure")
+    prompt = st.chat_input("Ask about your documents")
     if prompt:
         try:
             with st.spinner("Searching your organisation’s knowledge…"):
@@ -476,6 +505,7 @@ def render_chat(organisation_id: str, token: str) -> None:
                     payload={
                         "message": prompt,
                         "conversation_id": st.session_state.get("metis_chat_id"),
+                        "document_id": document_id,
                     },
                 )
         except ApiError as error:

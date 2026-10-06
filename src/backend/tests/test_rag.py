@@ -83,3 +83,27 @@ def test_rag_keeps_only_retrieved_citations_and_includes_history():
     assert provider.messages[1] == ("user", "What is the policy?")
     assert "[C1]" in provider.messages[0][1]
     assert "[C4]" not in grounded.content
+
+
+def test_explicit_document_answers_payslip_question_despite_lexical_mismatch():
+    embedding = HashingEmbeddingProvider()
+    question = "How much did I get paid in 2 weeks?"
+    text = "PAYSLIP\nPeriod: fortnight\nGross earnings 2500.00\nTax withheld 500.00\nNet payment 2000.00"
+    score = sum(
+        a * b
+        for a, b in zip(embedding.embed_query(question), embedding.embed_query(text))
+    )
+    payslip = hit(score)
+    payslip.chunk.content = text
+    assert score < MIN_RETRIEVAL_SCORE
+    provider = FakeChatProvider("Your net payment for the fortnight was 2000.00 [C1].")
+    grounded = answer_question(
+        question, [], [payslip], provider, document_id=payslip.document.id
+    )
+    assert grounded.citations == [payslip]
+    assert provider.messages is not None
+    assert text in provider.messages[0][1]
+    other = answer_question(
+        question, [], [payslip], None, document_id="another-document"
+    )
+    assert other.content == NO_EVIDENCE_ANSWER and not other.citations

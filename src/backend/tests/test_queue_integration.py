@@ -508,3 +508,60 @@ def test_external_source_changes_index_and_deletions_remove_retrieval(monkeypatc
     finally:
         stop_worker(worker)
         reset_stream(redis)
+
+
+def test_selected_payslip_context_bypasses_lexical_cutoff_and_rejects_foreign_document(
+    monkeypatch,
+):
+    from backend.services.rag import NO_EVIDENCE_ANSWER
+
+    class PayslipProvider:
+        model_id = "test-payslip"
+
+        def generate(self, messages):
+            assert "Net payment 2000.00" in messages[0][1]
+            return ChatCompletion(
+                "Your net payment was 2000.00 for the fortnight [C1].",
+                self.model_id,
+                20,
+                10,
+            )
+
+    redis = Redis.from_url(os.environ["REDIS_URL"])
+    reset_stream(redis)
+    worker = start_worker()
+    monkeypatch.setattr(chat, "get_chat_provider", PayslipProvider)
+    try:
+        with authenticated_client(app) as client:
+            org = client.post(
+                "/api/organisations", json={"name": "Synthetic payslip"}
+            ).json()["id"]
+            other_org = client.post(
+                "/api/organisations", json={"name": "Other tenant"}
+            ).json()["id"]
+            uploaded = client.post(
+                f"/api/organisations/{org}/documents/upload",
+                files={
+                    "file": (
+                        "payslip.txt",
+                        b"PAYSLIP\nPeriod: fortnight\nGross earnings 2500.00\nTax withheld 500.00\nNet payment 2000.00",
+                        "text/plain",
+                    )
+                },
+            ).json()
+            wait_for_status(client, org, uploaded["job"]["id"], "indexed")
+            payload = {"message": "How much did I get paid in 2 weeks?"}
+            unscoped = client.post(f"/api/organisations/{org}/chat", json=payload)
+            assert unscoped.json()["answer"] == NO_EVIDENCE_ANSWER
+            payload["document_id"] = uploaded["document"]["id"]
+            answered = client.post(f"/api/organisations/{org}/chat", json=payload)
+            assert answered.status_code == 200, answered.text
+            assert (
+                answered.json()["citations"][0]["document_id"] == payload["document_id"]
+            )
+            assert "2000.00" in answered.json()["answer"]
+            denied = client.post(f"/api/organisations/{other_org}/chat", json=payload)
+            assert denied.status_code == 404
+    finally:
+        stop_worker(worker)
+        reset_stream(redis)

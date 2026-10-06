@@ -144,7 +144,7 @@ GPTMOCK_BASE_URL=http://host.docker.internal:8002/v1 \
   mise exec -- docker compose up --build -d --wait
 ```
 
-Open `http://localhost:8501`, create an account and organisation, upload a document, wait for indexing, then ask a question using words from that document. API documentation is at `http://localhost:8000/docs`. Keep both tunnels running while testing. Port 8002 listens inside DevPod; the workstation model forward remains on loopback.
+Open `http://localhost:8501`, create an account and organisation, upload a document, wait for indexing, then ask a question using words from that document. For a question about a specific file, choose it in Chat’s **Answer from** selector. This sends that document’s retrieved text as context even when your question uses different wording. Local hashing embeddings support lexical matching; ChatMock supplies chat completions and does not supply semantic embeddings. Configure the embedding provider separately for general semantic search. API documentation is at `http://localhost:8000/docs`. Keep both tunnels running while testing. Port 8002 listens inside DevPod; the workstation model forward remains on loopback.
 
 LangGraph remains deferred: the current chat pipeline is linear. See [orchestration scope and future triggers](docs/orchestration.md) for the Phase 13 decision.
 

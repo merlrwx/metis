@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass
+from uuid import UUID
 
 from backend import observability
 from backend.chat import ChatCompletion, ChatProvider
@@ -19,14 +20,31 @@ class GroundedAnswer:
     completion: ChatCompletion | None
 
 
+def supporting_evidence(
+    hits: list[SearchHit], document_id: UUID | None = None
+) -> list[SearchHit]:
+    # An explicitly chosen document supplies context independently of query similarity.
+    return [
+        hit
+        for hit in hits
+        if (
+            hit.document.id == document_id
+            if document_id is not None
+            else hit.score >= MIN_RETRIEVAL_SCORE
+        )
+    ]
+
+
 @observability.RAG_DURATION.time()
 def answer_question(
     question: str,
     history: list[tuple[str, str]],
     hits: list[SearchHit],
     provider: ChatProvider | None,
+    *,
+    document_id: UUID | None = None,
 ) -> GroundedAnswer:
-    evidence = [hit for hit in hits if hit.score >= MIN_RETRIEVAL_SCORE]
+    evidence = supporting_evidence(hits, document_id)
     if not evidence:
         return GroundedAnswer(NO_EVIDENCE_ANSWER, [], None)
     if provider is None:
