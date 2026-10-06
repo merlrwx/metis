@@ -134,6 +134,9 @@ def store_external_document(session, source, remote, data, storage):
 async def synchronize(
     session, organisation_id, source_id, connector, storage, publisher
 ):
+    from backend.services.knowledge import ensure_index_ready
+
+    ensure_index_ready(session, organisation_id, lock=True)
     source = claim_source(session, organisation_id, source_id)
     if source is None:
         return {"queued": 0, "unchanged": 0, "deleted": 0, "busy": True}

@@ -107,6 +107,59 @@ def get_document(
     )
 
 
+class IndexUnavailable(RuntimeError):
+    pass
+
+
+def ensure_index_ready(
+    session: Session,
+    organisation_id: uuid.UUID,
+    model_id: str | None = None,
+    *,
+    lock: bool = False,
+) -> None:
+    statement = (
+        select(Organisation)
+        .where(Organisation.id == organisation_id)
+        .execution_options(populate_existing=True)
+    )
+    if lock:
+        statement = statement.with_for_update()
+    organisation = session.scalar(statement)
+    if organisation is not None and (
+        organisation.index_status != "ready"
+        or (
+            model_id is not None
+            and organisation.index_model is not None
+            and organisation.index_model != model_id
+        )
+    ):
+        raise IndexUnavailable(
+            "Knowledge is being re-indexed or uses another embedding model. Ask an administrator to check indexing status."
+        )
+    if (
+        organisation is not None
+        and organisation.index_model is None
+        and model_id is not None
+    ):
+        models = set(
+            session.scalars(
+                select(Chunk.embedding_model)
+                .join(
+                    Document, Document.current_version_id == Chunk.document_version_id
+                )
+                .where(
+                    Document.organisation_id == organisation_id,
+                    Chunk.organisation_id == organisation_id,
+                )
+            )
+        )
+        if models and models != {model_id}:
+            raise IndexUnavailable(
+                "Knowledge uses another embedding model; re-index the organisation before searching or uploading."
+            )
+
+
 @observability.RETRIEVAL_DURATION.time()
 def search_chunks(
     session: Session,
@@ -117,6 +170,7 @@ def search_chunks(
     source_id: uuid.UUID | None = None,
     document_id: uuid.UUID | None = None,
 ) -> list[SearchHit]:
+    ensure_index_ready(session, organisation_id, embedding_model)
     distance = Chunk.embedding.cosine_distance(query_embedding)
     statement = (
         select(Chunk, Document, Source, distance.label("distance"))

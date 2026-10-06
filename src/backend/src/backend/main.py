@@ -16,6 +16,7 @@ from fastapi import (
     Query,
     UploadFile,
 )
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
@@ -67,6 +68,8 @@ from backend.tasks import process_ingestion_job, synchronize_source
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    if os.environ.get("METIS_EMBEDDING_PREFLIGHT") == "true":
+        embeddings.main()
     if QUEUE_CONFIGURED:
         await broker.startup()
     try:
@@ -79,6 +82,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 observability.configure_logging()
 app = FastAPI(title="Metis API", version="0.1.0", lifespan=lifespan)
 app.middleware("http")(observability.request_metrics)
+
+
+@app.exception_handler(knowledge.IndexUnavailable)
+async def index_unavailable_handler(request, error):
+    return JSONResponse(status_code=503, content={"detail": str(error)})
 
 
 @app.get("/metrics", include_in_schema=False)
@@ -659,7 +667,7 @@ def search_documents(
         query_embedding = provider.embed_query(payload.query)
     except embeddings.InvalidEmbeddingInput as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    except (RuntimeError, OSError) as error:
+    except (RuntimeError, OSError, TypeError, ValueError) as error:
         raise HTTPException(
             status_code=503, detail="Embedding provider is unavailable"
         ) from error
@@ -749,7 +757,7 @@ def chat_with_knowledge(
         query_embedding = embedding_provider.embed_query(payload.message)
     except embeddings.InvalidEmbeddingInput as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    except (RuntimeError, OSError) as error:
+    except (RuntimeError, OSError, TypeError, ValueError) as error:
         raise HTTPException(
             status_code=503, detail="Embedding provider is unavailable"
         ) from error

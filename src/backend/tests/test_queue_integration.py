@@ -565,3 +565,85 @@ def test_selected_payslip_context_bypasses_lexical_cutoff_and_rejects_foreign_do
     finally:
         stop_worker(worker)
         reset_stream(redis)
+
+
+def test_reindex_resumes_maintenance_and_keeps_other_tenant_untouched():
+    from uuid import UUID
+
+    from backend.models import Chunk, Organisation
+    from backend.reindex import rebuild
+    from sqlalchemy import select
+
+    redis = Redis.from_url(os.environ["REDIS_URL"])
+    reset_stream(redis)
+    worker = start_worker()
+    try:
+        with authenticated_client(app) as client:
+            org = client.post("/api/organisations", json={"name": "Re-index A"}).json()[
+                "id"
+            ]
+            other = client.post(
+                "/api/organisations", json={"name": "Re-index B"}
+            ).json()["id"]
+            uploaded = client.post(
+                f"/api/organisations/{org}/documents/upload",
+                files={
+                    "file": (
+                        "policy.txt",
+                        b"A synthetic medication incident policy.",
+                        "text/plain",
+                    )
+                },
+            ).json()
+            wait_for_status(client, org, uploaded["job"]["id"], "indexed")
+            unreadable = client.post(
+                f"/api/organisations/{org}/documents/upload",
+                files={"file": ("empty.txt", b"", "text/plain")},
+            ).json()
+            failed = wait_for_status(client, org, unreadable["job"]["id"], "failed")
+            with database.SessionLocal() as session:
+                first = session.get(Organisation, UUID(org))
+                first.index_status = "reindexing"
+                chunk = session.scalar(
+                    select(Chunk).where(Chunk.organisation_id == UUID(org))
+                )
+                chunk.embedding_model = "old-model"
+                session.commit()
+            assert (
+                client.post(
+                    f"/api/organisations/{org}/chat",
+                    json={"message": "medication incident"},
+                ).status_code
+                == 503
+            )
+            client.portal.call(rebuild, UUID(org), 15)
+            with database.SessionLocal() as session:
+                first = session.get(Organisation, UUID(org))
+                assert (
+                    first.index_status == "ready"
+                    and first.index_model == "metis:feature-hash-v1"
+                )
+                assert session.get(Organisation, UUID(other)).index_model is None
+                assert set(
+                    session.scalars(
+                        select(Chunk.embedding_model).where(
+                            Chunk.organisation_id == UUID(org)
+                        )
+                    )
+                ) == {"metis:feature-hash-v1"}
+            assert (
+                job_status(client, org, unreadable["job"]["id"])["attempts"]
+                == failed["attempts"]
+            )
+            assert (
+                job_status(client, org, unreadable["job"]["id"])["status"] == "failed"
+            )
+            # A completed rebuild is idempotent and does not reprocess unchanged rows.
+            client.portal.call(rebuild, UUID(org), 15)
+            assert client.post(
+                f"/api/organisations/{org}/search",
+                json={"query": "medication incident"},
+            ).json()["results"]
+    finally:
+        stop_worker(worker)
+        reset_stream(redis)

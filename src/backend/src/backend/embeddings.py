@@ -52,12 +52,24 @@ class HashingEmbeddingProvider:
 
 
 class OpenAICompatibleEmbeddingProvider:
-    def __init__(self, base_url: str, api_key: str, model: str, timeout: float = 30):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        timeout: float = 30,
+        dimensions: int = EMBEDDING_DIMENSIONS,
+    ):
+        if not 1 <= dimensions <= 2000:
+            raise ValueError("Embedding dimensions must be between 1 and 2000")
+        self.dimensions = dimensions
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
-        self.model_id = f"openai-compatible:{model}"
+        self.model_id = f"openai-compatible:{model}" + (
+            f":dimensions={dimensions}" if dimensions != EMBEDDING_DIMENSIONS else ""
+        )
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         embeddings = []
@@ -114,7 +126,7 @@ class OpenAICompatibleEmbeddingProvider:
             vector = row.get("embedding")
             if (
                 not isinstance(vector, list)
-                or len(vector) != EMBEDDING_DIMENSIONS
+                or len(vector) != self.dimensions
                 or any(
                     not isinstance(value, int | float) or isinstance(value, bool)
                     for value in vector
@@ -122,7 +134,7 @@ class OpenAICompatibleEmbeddingProvider:
                 or any(not math.isfinite(value) for value in vector)
             ):
                 raise RuntimeError(
-                    f"Embedding provider must return {EMBEDDING_DIMENSIONS} finite values"
+                    f"Embedding provider must return {self.dimensions} finite values"
                 )
             vectors.append([float(value) for value in vector])
         return vectors
@@ -144,5 +156,14 @@ def get_embedding_provider() -> EmbeddingProvider:
             base_url=os.environ.get("EMBEDDING_BASE_URL", "https://api.openai.com/v1"),
             api_key=api_key,
             model=os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small"),
+            dimensions=int(
+                os.environ.get("EMBEDDING_DIMENSIONS", str(EMBEDDING_DIMENSIONS))
+            ),
         )
     raise RuntimeError(f"Unsupported embedding provider: {provider}")
+
+
+def main():
+    provider = get_embedding_provider()
+    vector = provider.embed_query("Synthetic embedding readiness check")
+    print(f"Embedding ready: model={provider.model_id}, dimensions={len(vector)}")

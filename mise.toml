@@ -64,3 +64,11 @@ run = "uv run --locked --project src/backend python scripts/benchmark_retrieval.
 [tasks.verify-manifests]
 description = "Render local Kubernetes overlays independently of the stable goal verifier"
 run = "kubectl kustomize kubernetes/manifests/base >/dev/null && kubectl kustomize kubernetes/manifests/dev >/dev/null"
+
+[tasks.download-embeddings]
+description = "Download the pinned local semantic model"
+run = "uv run --locked --project src/backend --extra semantic metis-download-embeddings"
+
+[tasks.evaluate-retrieval]
+description = "Opt-in synthetic ingestion and semantic retrieval evaluation"
+run = "uv run --locked --project src/backend python scripts/evaluate_retrieval.py"

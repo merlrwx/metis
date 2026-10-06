@@ -1,0 +1,127 @@
+[
+  {
+    "id": "pay",
+    "text": "PAYSLIP. Period: fortnight ending 30 September. Gross earnings AUD 2500. Tax withheld AUD 500. Net payment AUD 2000.",
+    "question": "How much did I get paid in two weeks?"
+  },
+  {
+    "id": "leave",
+    "text": "Annual leave requests need manager approval at least fourteen days before the planned absence.",
+    "question": "Who approves my holiday request?"
+  },
+  {
+    "id": "incident",
+    "text": "After a medication incident notify the clinical supervisor and record the event in the incident register.",
+    "question": "What should I do if the wrong medicine was administered?"
+  },
+  {
+    "id": "equipment",
+    "text": "Faulty equipment must be isolated, labelled out of service and reported to facilities.",
+    "question": "The machine has broken. Can I keep using it?"
+  },
+  {
+    "id": "access",
+    "text": "New employees require their manager to request workstation access through the IT service desk.",
+    "question": "How do new staff get a computer login?"
+  },
+  {
+    "id": "supplier",
+    "text": "Supplier ACME-482 supplies nitrile examination gloves. Order through procurement.",
+    "question": "Who supplies our examination gloves?"
+  },
+  {
+    "id": "backup",
+    "text": "Database backups run nightly. Restore to an isolated environment and verify data before promotion.",
+    "question": "How often is our database backed up?"
+  },
+  {
+    "id": "refund",
+    "text": "Customers may request a refund within thirty days with the original receipt.",
+    "question": "Can a customer get their money back after a fortnight?"
+  },
+  {
+    "id": "fire",
+    "text": "On hearing the fire alarm evacuate through the nearest safe exit and assemble in the north car park.",
+    "question": "Where do we meet when the alarm sounds?"
+  },
+  {
+    "id": "remote",
+    "text": "Remote work is permitted two days each week with team leader approval.",
+    "question": "How many days can I work from home?"
+  },
+  {
+    "id": "travel",
+    "text": "Business travel requires approval before booking. Economy airfare and reasonable accommodation are reimbursable.",
+    "question": "Do I need permission before buying flights for work?"
+  },
+  {
+    "id": "password",
+    "text": "Account passwords require at least fourteen characters. Enable multi-factor authentication.",
+    "question": "What are the rules for a new account password?"
+  },
+  {
+    "id": "breach",
+    "text": "Suspected data exposure must be reported immediately to the security officer. Preserve relevant logs.",
+    "question": "Who should I tell if confidential information leaks?"
+  },
+  {
+    "id": "training",
+    "text": "Mandatory safety training must be completed within the first week of employment.",
+    "question": "When must a new starter finish safety induction?"
+  },
+  {
+    "id": "invoice",
+    "text": "Invoice INV-2026-17 is due on 15 October. Amount payable AUD 740.00.",
+    "question": "When do we need to pay invoice INV-2026-17?"
+  },
+  {
+    "id": "overtime",
+    "text": "Overtime must be authorised in advance. Approved hours are paid at one and a half times the ordinary hourly rate.",
+    "question": "Is extra work paid at a higher rate?"
+  },
+  {
+    "id": "sick",
+    "text": "Notify your manager before your shift if unwell. A medical certificate is required after two consecutive days.",
+    "question": "Do I need a doctors note after three sick days?"
+  },
+  {
+    "id": "delivery",
+    "text": "Incoming parcels are received at the rear loading dock between 8am and 4pm.",
+    "question": "Where should a courier bring a package?"
+  },
+  {
+    "id": "retention",
+    "text": "Customer records are retained for seven years after account closure unless a legal hold applies.",
+    "question": "How long do we keep information after a customer leaves?"
+  },
+  {
+    "id": "roster",
+    "text": "The next fortnight roster is published each Thursday afternoon in the staff portal.",
+    "question": "When can I see my upcoming shifts?"
+  },
+  {
+    "id": "vpn",
+    "text": "To connect from outside the office use the approved VPN client and complete the second-factor challenge.",
+    "question": "How do I connect to the office network from home?"
+  },
+  {
+    "id": "parking",
+    "text": "Staff parking permits are issued by reception. Visitor spaces must remain available for guests.",
+    "question": "Where can I get permission to park at work?"
+  },
+  {
+    "id": "expense",
+    "text": "Submit expense receipts through the finance portal by the fifth working day of the following month.",
+    "question": "When do I need to claim my work expenses?"
+  },
+  {
+    "id": "meeting",
+    "text": "The monthly operations review occurs on the first Monday at 10am in meeting room Delta.",
+    "question": "When and where is the regular operations meeting?"
+  },
+  {
+    "id": "emergency",
+    "text": "For a life-threatening emergency call the emergency services number immediately, then notify the duty manager.",
+    "question": "What should I do when someone needs urgent medical help?"
+  }
+]

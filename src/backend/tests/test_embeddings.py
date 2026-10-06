@@ -97,3 +97,29 @@ def test_openai_compatible_provider_requires_an_api_key(monkeypatch):
 
     with pytest.raises(RuntimeError, match="API_KEY"):
         embeddings.get_embedding_provider()
+
+
+def test_semantic_provider_accepts_configured_dimensions_and_rejects_mismatch(
+    monkeypatch,
+):
+    provider = embeddings.OpenAICompatibleEmbeddingProvider(
+        "http://local/v1", "local", "pinned-model", dimensions=384
+    )
+    monkeypatch.setattr(
+        embeddings,
+        "urlopen",
+        lambda *args, **kwargs: io.BytesIO(
+            json.dumps({"data": [{"index": 0, "embedding": [0.1] * 384}]}).encode()
+        ),
+    )
+    assert len(provider.embed_query("synthetic")) == 384
+    assert provider.model_id.endswith(":dimensions=384")
+    monkeypatch.setattr(
+        embeddings,
+        "urlopen",
+        lambda *args, **kwargs: io.BytesIO(
+            json.dumps({"data": [{"index": 0, "embedding": [0.1] * 1536}]}).encode()
+        ),
+    )
+    with pytest.raises(RuntimeError, match="384 finite values"):
+        provider.embed_query("synthetic")

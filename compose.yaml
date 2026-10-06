@@ -44,7 +44,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       OBJECT_STORAGE_BACKEND: local
       OBJECT_STORAGE_LOCAL_DIR: /data/metis-objects
-      EMBEDDING_PROVIDER: hashing
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-hashing}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://embeddings:8003/v1}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-metis-local}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2@d13954661f83248295ba75c1ed411eef3b7b936e}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-384}
       METIS_AUTH_SECRET_KEY: ${METIS_AUTH_SECRET_KEY:-metis-local-development-secret-change-before-use}
       METIS_BOOTSTRAP_TOKEN: ${METIS_BOOTSTRAP_TOKEN:-metis-local-bootstrap-token}
       GPTMOCK_BASE_URL: ${GPTMOCK_BASE_URL:-http://host.docker.internal:8001/v1}
@@ -86,7 +90,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       OBJECT_STORAGE_BACKEND: local
       OBJECT_STORAGE_LOCAL_DIR: /data/metis-objects
-      EMBEDDING_PROVIDER: hashing
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-hashing}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://embeddings:8003/v1}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-metis-local}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2@d13954661f83248295ba75c1ed411eef3b7b936e}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-384}
       METIS_WORKER_METRICS_PORT: "9100"
     volumes:
       - metis-objects:/data/metis-objects

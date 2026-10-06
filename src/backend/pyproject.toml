@@ -24,11 +24,18 @@ dependencies = [
     "uvicorn>=0.53.0",
 ]
 
+[project.optional-dependencies]
+semantic = ["fastembed>=0.8,<0.9"]
+
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
 markers = ["external_worker: starts a separate background worker process"]
 
 [project.scripts]
+metis-embeddings = "backend.semantic_runtime:main"
+metis-download-embeddings = "backend.semantic_runtime:download"
+metis-reindex = "backend.reindex:main"
+metis-check-embeddings = "backend.embeddings:main"
 metis-api = "backend.main:main"
 metis-worker = "backend.worker:main"
 metis-reconcile = "backend.reconcile:main"

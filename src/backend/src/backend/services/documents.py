@@ -5,6 +5,7 @@ from urllib.parse import quote
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.embeddings import get_embedding_provider
 from backend.models import (
     Document,
     DocumentVersion,
@@ -12,6 +13,7 @@ from backend.models import (
     Organisation,
     Source,
 )
+from backend.services.knowledge import ensure_index_ready
 from backend.storage import ObjectStorage
 
 
@@ -24,6 +26,9 @@ def upload_document(
     storage: ObjectStorage,
     source_id: uuid.UUID | None = None,
 ) -> tuple[Document | None, IngestionJob | None, bool]:
+    ensure_index_ready(
+        session, organisation_id, get_embedding_provider().model_id, lock=True
+    )
     if session.get(Organisation, organisation_id) is None:
         return None, None, False
 

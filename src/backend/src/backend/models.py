@@ -20,8 +20,6 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from backend.embeddings import EMBEDDING_DIMENSIONS
-
 JSON_OBJECT = JSON().with_variant(JSONB, "postgresql")
 
 
@@ -40,6 +38,10 @@ class Organisation(Timestamped, Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    index_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ready"
+    )
+    index_model: Mapped[str | None] = mapped_column(String(255))
 
 
 class User(Timestamped, Base):
@@ -241,9 +243,7 @@ class Chunk(Timestamped, Base):
         "metadata", JSON_OBJECT, nullable=False, default=dict
     )
     embedding_model: Mapped[str] = mapped_column(String(255), nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(
-        VECTOR(EMBEDDING_DIMENSIONS), nullable=False
-    )
+    embedding: Mapped[list[float]] = mapped_column(VECTOR(), nullable=False)
 
 
 class Conversation(Timestamped, Base):
