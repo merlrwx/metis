@@ -11,6 +11,15 @@ from uuid import uuid4
 from prometheus_client import Counter, Gauge, Histogram
 from sqlalchemy import func, select
 
+PIPELINE_EVENTS = Counter(
+    "metis_pipeline_events_total",
+    "Pipeline stage results without tenant content",
+    ["stage", "result"],
+)
+ANSWER_OUTCOMES = Counter(
+    "metis_answer_outcomes_total", "Grounded answer outcomes", ["outcome"]
+)
+
 LATENCY_BUCKETS = (0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300)
 
 request_id = ContextVar("request_id", default="")

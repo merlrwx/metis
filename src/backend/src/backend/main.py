@@ -80,6 +80,7 @@ from backend.services import (
     ingestion,
     knowledge,
     rag,
+    request_limits,
 )
 from backend.services import documents as document_service
 from backend.services import jobs as job_service
@@ -89,6 +90,7 @@ from backend.tasks import process_ingestion_job, synchronize_source
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    request_limits.configured_limits()
     if os.environ.get("METIS_EMBEDDING_PREFLIGHT") == "true":
         embeddings.main()
     if QUEUE_CONFIGURED:
@@ -102,6 +104,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 observability.configure_logging()
 app = FastAPI(title="Metis API", version="0.1.0", lifespan=lifespan)
+app.add_middleware(request_limits.RequestSizeLimit)
 app.middleware("http")(observability.request_metrics)
 
 
@@ -552,6 +555,7 @@ async def check_source_connection(
         raise HTTPException(
             status_code=422, detail="This source has no remote connection"
         )
+    request_limits.enforce(organisation_id, actor.user_id, "connection_check")
     checked_at = datetime.now(UTC).isoformat()
     try:
         identity = await Microsoft365Source(source.id).check_connection()
@@ -615,6 +619,7 @@ async def synchronize_knowledge_source(
         raise HTTPException(status_code=503, detail="Background queue is unavailable")
     if source_is_busy(source):
         return source
+    request_limits.enforce(organisation_id, actor.user_id, "source_sync")
     if full:
         source.sync_checkpoint = None
     source.sync_status = "queued"
@@ -740,6 +745,7 @@ async def upload_document(
     except ingestion.UnsupportedDocument as error:
         raise HTTPException(status_code=415, detail=str(error)) from error
 
+    request_limits.enforce(organisation_id, actor.user_id, "upload")
     try:
         document, job, created = document_service.upload_document(
             session,
@@ -1176,17 +1182,19 @@ def search_documents(
     organisation_id: UUID,
     payload: SearchRequest,
     session: Annotated[Session, Depends(get_session)],
-    _: Annotated[OrganisationMembership, Depends(auth.require_membership)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_membership)],
 ) -> SearchView:
     if session.get(Organisation, organisation_id) is None:
         raise HTTPException(status_code=404, detail="Organisation not found")
     source_ids, document_ids = request_scope(session, organisation_id, payload)
+    request_limits.enforce(organisation_id, actor.user_id, "search")
     try:
         provider = embeddings.get_embedding_provider()
         query_embedding = provider.embed_query(payload.query)
     except embeddings.InvalidEmbeddingInput as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except (RuntimeError, OSError, TypeError, ValueError) as error:
+        observability.PIPELINE_EVENTS.labels("embedding", "failure").inc()
         raise HTTPException(
             status_code=503, detail="Embedding provider is unavailable"
         ) from error
@@ -1203,6 +1211,9 @@ def search_documents(
         document_ids=document_ids,
         query_text=payload.query,
     )
+    observability.PIPELINE_EVENTS.labels(
+        "retrieval", "success" if hits else "empty"
+    ).inc()
     return SearchView(
         embedding_model=provider.model_id,
         results=[
@@ -1324,6 +1335,7 @@ def chat_with_knowledge(
             session, organisation_id, response.citations
         )
         return response
+    request_limits.enforce(organisation_id, actor.user_id, "chat")
     history = (
         conversations.get_history(
             session,
@@ -1351,6 +1363,7 @@ def chat_with_knowledge(
         except embeddings.InvalidEmbeddingInput as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         except (RuntimeError, OSError, TypeError, ValueError) as error:
+            observability.PIPELINE_EVENTS.labels("embedding", "failure").inc()
             raise HTTPException(
                 status_code=503, detail="Embedding provider is unavailable"
             ) from error
@@ -1366,6 +1379,9 @@ def chat_with_knowledge(
             expand_neighbors=True,
             query_text=retrieval_query,
         )
+        observability.PIPELINE_EVENTS.labels(
+            "retrieval", "success" if hits else "empty"
+        ).inc()
         complete_scope = False
         if rag.needs_complete_scope(payload.message):
             complete = knowledge.complete_scoped_evidence(
@@ -1381,6 +1397,9 @@ def chat_with_knowledge(
         has_evidence = bool(
             rag.supporting_evidence(hits, payload.document_id, document_ids)
         )
+        observability.PIPELINE_EVENTS.labels(
+            "evidence", "accepted" if has_evidence else "rejected"
+        ).inc()
         try:
             chat_provider = (
                 chat.get_chat_provider()
@@ -1397,6 +1416,7 @@ def chat_with_knowledge(
                 complete_scope=complete_scope,
             )
         except chat.ChatProviderError as error:
+            observability.PIPELINE_EVENTS.labels("generation", "failure").inc()
             raise HTTPException(
                 status_code=503, detail="Chat provider is unavailable"
             ) from error
@@ -1452,6 +1472,7 @@ def chat_with_knowledge(
             "model_id": completion.model_id if completion else None,
         },
     )
+    observability.ANSWER_OUTCOMES.labels(grounded.outcome).inc()
     response = ChatResponse(
         message_id=session.scalar(
             select(Message.id)

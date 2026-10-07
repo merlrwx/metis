@@ -76,3 +76,15 @@ run = "uv run --locked --project src/backend python scripts/evaluate_retrieval.p
 [tasks.evaluate-answers]
 description = "Opt-in live answer-quality review over synthetic excerpts"
 run = "uv run --locked --project src/backend python scripts/evaluate_answers.py"
+
+[tasks.evaluate-pipeline]
+description = "Opt-in actual synthetic ingestion/retrieval/live ChatMock answer evaluation"
+run = "uv run --locked --project src/backend python scripts/evaluate_pipeline.py"
+
+[tasks.local]
+description = "Start and check existing Metis DevPod, semantic services and local ChatMock forwarding"
+run = "bash scripts/local"
+
+[tasks.evaluate-recovery]
+description = "Opt-in synthetic local PostgreSQL/object restore and Redis15 reconciliation"
+run = "uv run --locked --project src/backend python scripts/evaluate_recovery.py"

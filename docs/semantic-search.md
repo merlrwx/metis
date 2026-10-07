@@ -2,7 +2,7 @@
 
 The API and ingestion worker use the same independently configured embedding provider. ChatMock supplies chat completions; its observed embedding endpoint returns 404. Local semantic development uses a small CPU FastEmbed runtime over the existing compatible HTTP interface.
 
-Selected model: `sentence-transformers/all-MiniLM-L6-v2`, Apache-2.0, 384 dimensions. The runtime downloads only the ONNX/tokenizer files from `qdrant/all-MiniLM-L6-v2-onnx` at revision `d13954661f83248295ba75c1ed411eef3b7b936e`. Runtime inference uses those local files; it does not silently download a newer revision. The optional `semantic` dependency extra is locked in uv; the normal API/worker images and deterministic CI do not install it.
+Selected model: `sentence-transformers/all-MiniLM-L6-v2`, Apache-2.0, 384 dimensions. The runtime downloads only the ONNX/tokenizer files from `qdrant/all-MiniLM-L6-v2-onnx` at revision `d13954661f83248295ba75c1ed411eef3b7b936e`. The six pinned inference/tokenizer files total 91,333,544 bytes (87.1 MiB), measured in the DevPod model volume on 2026-10-07. Runtime inference uses those local files; it does not silently download a newer revision. The optional `semantic` dependency extra is locked in uv; the normal API/worker images and deterministic CI do not install it.
 
 ## Measured selection
 
@@ -15,7 +15,7 @@ On 2026-10-06, DevPod reported 20 CPUs and 33.5 GB memory. FastEmbed used two CP
 
 The selected pinned model also passed actual extraction/ingestion and PostgreSQL retrieval: 100% Recall@5, 92% Recall@1, median embedding-plus-search 6.8 ms. The payslip paraphrase ranked first. Four unrelated questions scored below 0.2; relevant paired scores ranged from 0.262 to 0.802, so the existing 0.2 threshold is retained for this initial model/fixture. Scores are not probabilities; recalibrate on additional answerable/unanswerable material before adopting another model or asserting broad quality.
 
-These are small, warm, sequential synthetic measurements, not capacity or comprehensive quality claims. MiniLM has a 256-token input limit; extraction/chunk evaluation must account for truncation when adding larger or denser documents. The current character-based splitter is a known limitation scheduled for the document-quality phase.
+These are small, warm, sequential synthetic measurements, not capacity or comprehensive quality claims. MiniLM has a 256-token input limit; extraction/chunk evaluation must account for truncation when adding larger or denser documents. Semantic ingestion now uses the pinned model tokenizer and limits chunks to 254 content tokens plus two special tokens; character offsets and full text coverage are preserved. Embedding requests contain at most 64 chunks.
 
 ## Start in DevPod
 

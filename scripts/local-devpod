@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Invoked inside the existing Metis DevPod by scripts/local.
+set -euo pipefail
+export DOCKER_CONFIG="$(mktemp -d)"
+trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+export GPTMOCK_BASE_URL="${GPTMOCK_BASE_URL:-http://host.docker.internal:8002/v1}"
+compose=(docker compose -f compose.yaml -f compose.semantic.yaml)
+if [[ -n "${METIS_CONNECTOR_ENV_FILE:-}" ]]; then
+  [[ -f "$METIS_CONNECTOR_ENV_FILE" ]] || { echo 'Connector environment file is unavailable' >&2; exit 1; }
+  compose+=(-f compose.connectors.yaml)
+fi
+mise exec -- "${compose[@]}" build embeddings
+mise exec -- "${compose[@]}" run --rm embeddings /app/.venv/bin/metis-download-embeddings
+mise exec -- "${compose[@]}" up --build -d --wait
+mise exec -- "${compose[@]}" exec -T backend /app/.venv/bin/metis-check-embeddings
+GPTMOCK_BASE_URL=http://127.0.0.1:8002/v1 mise run test-gptmock

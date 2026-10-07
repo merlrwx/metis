@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Run on the host: read-only ChatMock forwarding and Metis-only local services.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+mkdir -p .agent/local
+chmod 700 .agent/local
+for tool in devpod ssh kubectl python3; do
+  command -v "$tool" >/dev/null || { echo "Install $tool before running mise run local" >&2; exit 1; }
+done
+port_open() {
+  python3 - "$1" <<'PY'
+import socket, sys
+with socket.socket() as connection:
+    connection.settimeout(1)
+    raise SystemExit(connection.connect_ex(("127.0.0.1", int(sys.argv[1]))) != 0)
+PY
+}
+if ! port_open 8001; then
+  kubectl --context "${METIS_CHATMOCK_CONTEXT:-homelab-k8s}" -n "${METIS_CHATMOCK_NAMESPACE:-hermes}" port-forward service/chatmock 8001:8000 --address 127.0.0.1 >.agent/local/chatmock-forward.log 2>&1 &
+  echo $! >.agent/local/chatmock-forward.pid
+  for attempt in {1..30}; do port_open 8001 && break; sleep 1; done
+fi
+# Check the existing listener rather than assuming every occupied port is ours.
+python3 - <<'PY'
+import urllib.request
+try:
+    with urllib.request.urlopen("http://127.0.0.1:8001/v1/models", timeout=10) as response:
+        assert response.status == 200
+except Exception:
+    raise SystemExit("Port 8001 must expose the configured ChatMock /v1/models endpoint; inspect .agent/local/chatmock-forward.log")
+PY
+devpod ssh metis --start-services=false --command 'true'
+# Reuse an existing working reverse tunnel; OpenSSH creates it when absent.
+if ! ssh metis.devpod 'curl -fsS --max-time 5 http://127.0.0.1:8002/v1/models >/dev/null'; then
+  ssh -o ExitOnForwardFailure=yes -fN -R 0.0.0.0:8002:127.0.0.1:8001 metis.devpod
+fi
+ssh metis.devpod 'cd /workspaces/metis && bash scripts/local-devpod'
+for port in 8000 8501; do
+  if ! port_open "$port"; then
+    ssh -o ExitOnForwardFailure=yes -fN -L "${port}:127.0.0.1:${port}" metis.devpod
+  fi
+done
+python3 - <<'PY'
+import json, urllib.request
+with urllib.request.urlopen("http://127.0.0.1:8000/api/info", timeout=10) as response:
+    assert json.load(response)["name"] == "Metis", "Port 8000 is occupied by another application"
+for address in ["http://127.0.0.1:8000/health", "http://127.0.0.1:8501/_stcore/health"]:
+    with urllib.request.urlopen(address, timeout=10) as response:
+        assert response.status == 200
+print("Metis: http://localhost:8501\nAPI: http://localhost:8000/docs\nSemantic embeddings and ChatMock bridge checked.")
+PY

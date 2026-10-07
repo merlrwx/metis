@@ -16,7 +16,8 @@ MAX_CSV_COLUMNS = 50
 MAX_CSV_CELL_CHARACTERS = 1000
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
-MAX_DOCX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+MAX_DOCX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024
+MAX_EXTRACTED_CHARACTERS = 2_000_000
 DOCX_MIME_TYPE = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 )
@@ -126,6 +127,10 @@ def _with_offsets(
         start = offset
         text_parts.append(normalized)
         offset += len(normalized)
+        if offset > MAX_EXTRACTED_CHARACTERS:
+            raise DocumentTooLarge(
+                "Extracted text exceeds 2 million characters; split the document"
+            )
         records.append({"title": title, "level": level, "start": start, "end": offset})
     return "\n\n".join(text_parts), records
 
@@ -219,6 +224,10 @@ def extract_document(filename: str, mime_type: str, data: bytes) -> ExtractedDoc
             start = offset
             text_parts.append(page_text)
             offset += len(page_text)
+            if offset > MAX_EXTRACTED_CHARACTERS:
+                raise DocumentTooLarge(
+                    "Extracted text exceeds 2 million characters; split the document"
+                )
             pages.append({"page": page_number, "start": start, "end": offset})
         extracted_text = "\n\n".join(text_parts).strip()
         readable_characters = sum(char.isalnum() for char in extracted_text)

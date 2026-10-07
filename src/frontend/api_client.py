@@ -51,7 +51,16 @@ class MetisApi:
             f"{self.base_url}{path}", data=body, headers=headers, method=method
         )
         try:
-            with urlopen(request, timeout=60 if upload is not None else 30) as response:
+            timeout = (
+                300
+                if path.endswith("/chat")
+                else 90
+                if path.endswith("/check")
+                else 60
+                if upload is not None
+                else 30
+            )
+            with urlopen(request, timeout=timeout) as response:
                 content = response.read()
         except HTTPError as error:
             detail = error.read().decode(errors="replace")

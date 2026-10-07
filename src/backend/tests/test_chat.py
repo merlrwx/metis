@@ -83,3 +83,17 @@ def test_chat_provider_uses_legacy_openai_token_usage(monkeypatch):
 
     assert response.input_tokens == 4
     assert response.output_tokens == 3
+
+
+def test_provider_rejects_unbounded_timeout_or_retry_configuration(monkeypatch):
+    import pytest
+
+    for name, value in [
+        ("GPTMOCK_TIMEOUT", "inf"),
+        ("GPTMOCK_TIMEOUT", "121"),
+        ("GPTMOCK_MAX_RETRIES", "2"),
+    ]:
+        with monkeypatch.context() as context:
+            context.setenv(name, value)
+            with pytest.raises(chat.ChatProviderError, match="configuration"):
+                chat.get_chat_provider()

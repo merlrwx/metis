@@ -42,6 +42,7 @@ class LangChainOpenAICompatibleProvider:
             use_responses_api=False,
             timeout=timeout,
             max_retries=max_retries,
+            max_tokens=4096,
         )
 
     def generate(self, messages: list[tuple[str, str]]) -> ChatCompletion:
@@ -82,8 +83,10 @@ def get_chat_provider() -> ChatProvider:
     try:
         timeout = float(os.environ.get("GPTMOCK_TIMEOUT", "120"))
         retries = int(os.environ.get("GPTMOCK_MAX_RETRIES", "1"))
-        if timeout <= 0 or retries < 0:
-            raise ValueError("Timeout must be positive and retries nonnegative")
+        if not 0 < timeout <= 120 or not 0 <= retries <= 1:
+            raise ValueError(
+                "Timeout must be within 120 seconds and retries at most one"
+            )
         return LangChainOpenAICompatibleProvider(
             base_url=os.environ.get("GPTMOCK_BASE_URL", "http://127.0.0.1:8001/v1"),
             api_key=os.environ.get("GPTMOCK_API_KEY", "chatmock"),

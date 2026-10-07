@@ -106,47 +106,19 @@ The API exposes aggregate Prometheus metrics at `/metrics`; worker metrics liste
 
 ## Local LLM testing
 
-Metis uses LangChain `ChatOpenAI` with the existing GPTMock bridge. From the workstation, forward the read-only service to port 8001:
+Metis uses LangChain `ChatOpenAI` with ChatMock for generation and a separate pinned CPU MiniLM service for semantic retrieval. Normal CI makes no live model calls.
+
+From the workstation, with the existing `metis` DevPod configured, run:
 
 ```bash
-kubectl -n hermes port-forward svc/chatmock 8001:8000
+mise run local
 ```
 
-In a second workstation terminal, open a reverse tunnel into the DevPod:
+This checks the read-only ChatMock service, starts local PostgreSQL/Redis/API/worker/frontend and semantic embeddings in the DevPod, verifies both model services, and opens localhost forwarding. Open **http://localhost:8501**; API documentation is at **http://localhost:8000/docs**. Existing uploaded data and volumes are retained. The command can be repeated. It uses `homelab-k8s`, namespace `hermes`, service `chatmock` by default; set `METIS_CHATMOCK_CONTEXT` and `METIS_CHATMOCK_NAMESPACE` for your existing bridge. Forwarding logs are under ignored `.agent/local/`. It requires available host ports 8000/8501 and a compatible ChatMock listener on 8001; it does not replace occupied listeners.
 
-```bash
-devpod ssh metis --reverse-forward-ports 8001:127.0.0.1:8001
-```
+The host bridge runs on 8001. OpenSSH forwards it into the DevPod on 8002; containers reach `http://host.docker.internal:8002/v1`. API and worker use the semantic Compose override together. See [semantic setup and re-indexing](docs/semantic-search.md) for manual commands, and [local operation and recovery](docs/local-operations.md) for limits, evaluations and backups. For optional Microsoft 365 credentials, invoke `METIS_CONNECTOR_ENV_FILE=/external/path.env bash scripts/local-devpod` inside the DevPod; credentials remain outside Git. No library is required to use uploaded knowledge.
 
-In that DevPod shell, run:
-
-```bash
-mise run test-gptmock
-```
-
-The smoke test uses `gpt-5.6-luna`, which is currently advertised by the bridge. Set `GPTMOCK_MODEL` to another model returned by `/v1/models` if needed. The key defaults to the bridge's placeholder `chatmock`; no key is printed. The Compose API receives the same settings and defaults to `host.docker.internal:8001`; set `GPTMOCK_BASE_URL` to a URL reachable from its container if your DevPod network uses a different route. Recreate the backend after changing these settings with `docker compose up -d --force-recreate backend`. The adapter uses Chat Completions (`use_responses_api=False`). Standard tests and CI replace the provider and make no live model calls.
-
-The GitOps dev overlay uses `http://chatmock.hermes.svc.cluster.local:8000/v1` from inside the homelab cluster. The disposable k3d overlay never calls a live model during its tests; set `GPTMOCK_BASE_URL` to a reachable endpoint before using chat there. A DevPod has its own network namespace: its localhost is not the workstation. When running the backend directly inside the DevPod, use `http://127.0.0.1:8001/v1` through the reverse tunnel above.
-
-For Compose inside DevPod, the reverse tunnel must also accept connections from its Docker containers. Keep the workstation service forward running, then run this in a second workstation terminal:
-
-```bash
-devpod ssh metis --start-services=false \
-  --reverse-forward-ports 0.0.0.0:8002:127.0.0.1:8001 \
-  -L 8501:127.0.0.1:8501 -L 8000:127.0.0.1:8000 \
-  --command 'sleep 86400'
-```
-
-In another DevPod shell, start the app:
-
-```bash
-GPTMOCK_BASE_URL=http://host.docker.internal:8002/v1 \
-  mise exec -- docker compose up --build -d --wait
-```
-
-Open `http://localhost:8501`, create an account and organisation, upload a document, wait for indexing, then ask a question using words from that document. For a question about a specific file, choose it in Chat’s **Answer from** selector. This sends that document’s retrieved text as context even when your question uses different wording. Local hashing embeddings support lexical matching; ChatMock supplies chat completions and does not supply semantic embeddings. Use the [semantic Compose setup](docs/semantic-search.md) and re-index existing knowledge for automatic semantic discovery. API documentation is at `http://localhost:8000/docs`. Keep both tunnels running while testing. Port 8002 listens inside DevPod; the workstation model forward remains on loopback.
-
-LangGraph remains deferred: the current chat pipeline is linear. See [orchestration scope and future triggers](docs/orchestration.md) for the Phase 13 decision.
+The bridge model defaults to `gpt-5.6-luna`; choose an advertised model with `GPTMOCK_MODEL` in the DevPod environment when running the manual Compose workflow. Chat uses bounded Chat Completions (`use_responses_api=False`). Microsoft 365 live-library validation is deferred because no approved library is configured. Connector fixtures cover its behavior; they do not establish live Microsoft 365 connectivity.
 
 ## CI and optional model evaluation
 

@@ -181,3 +181,35 @@ def test_document_worker_batches_large_csv_for_local_runtime(monkeypatch, tmp_pa
             session.query(Chunk).filter_by(organisation_id=organisation_id).count()
             == 65
         )
+
+
+def test_chunk_budget_rejects_before_embedding(monkeypatch, tmp_path):
+    from backend import observability, tasks
+
+    monkeypatch.setenv("OBJECT_STORAGE_BACKEND", "local")
+    monkeypatch.setenv("OBJECT_STORAGE_LOCAL_DIR", str(tmp_path))
+    client = new_authenticated_client(app)
+    org = uuid.UUID(
+        client.post("/api/organisations", json={"name": "Chunk budget"}).json()["id"]
+    )
+    with database.SessionLocal() as session:
+        _, job, _ = document_service.upload_document(
+            session,
+            org,
+            "large.txt",
+            "text/plain",
+            b"Long policy document.",
+            LocalObjectStorage(tmp_path),
+        )
+        job_id = job.id
+    monkeypatch.setattr(
+        tasks.chunking, "split_document", lambda *args, **kwargs: [None] * 2001
+    )
+    metric = observability.PIPELINE_EVENTS.labels("extraction", "failure")
+    before = metric._value.get()
+    with pytest.raises(tasks.ingestion.DocumentTooLarge, match="2,000"):
+        asyncio.run(run_ingestion_job(str(job_id), str(org)))
+    assert metric._value.get() == before + 1
+    with database.SessionLocal() as session:
+        assert session.query(Chunk).count() == 0
+        assert "split the document" in jobs.get_job(session, org, job_id).error

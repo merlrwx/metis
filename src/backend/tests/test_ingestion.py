@@ -231,3 +231,15 @@ def test_pdf_table_keeps_pay_period_amount_labels_and_page_provenance(sample_pdf
     assert "15-28 January 2026" in chunks[1].content
     assert "Net pay | 2,100.25" in chunks[1].content
     assert all("Label | Amount AUD" in chunk.content for chunk in chunks)
+
+
+def test_extraction_character_budget_rejects_large_text(monkeypatch):
+    monkeypatch.setattr(ingestion, "MAX_EXTRACTED_CHARACTERS", 32)
+    with pytest.raises(ingestion.DocumentTooLarge, match="split the document"):
+        ingestion.extract_document("large.txt", "text/plain", b"x" * 33)
+
+
+def test_extraction_character_budget_counts_section_separators(monkeypatch):
+    monkeypatch.setattr(ingestion, "MAX_EXTRACTED_CHARACTERS", 5)
+    with pytest.raises(ingestion.DocumentTooLarge):
+        ingestion._with_offsets([(None, None, "ab"), (None, None, "cd")])

@@ -48,6 +48,7 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
     observability.log_event(
         "job_started", job_id=job_id, organisation_id=organisation_id, attempt=attempt
     )
+    stage = "ingestion"
     try:
         if document_version_id is None:
             await asyncio.sleep(
@@ -73,6 +74,7 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
                 )
             storage = get_object_storage()
             data = await asyncio.to_thread(storage.get, object_key)
+            stage = "extraction"
             extracted = await asyncio.to_thread(
                 ingestion.extract_document, filename, mime_type, data
             )
@@ -84,8 +86,14 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
                 if "sentence-transformers/all-MiniLM-L6-v2" in provider.model_id
                 else None,
             )
+            if len(text_chunks) > 2000:
+                raise ingestion.DocumentTooLarge(
+                    "Document exceeds 2,000 searchable chunks; split the document"
+                )
             if not text_chunks:
                 raise RuntimeError("Document extraction produced no text chunks")
+            observability.PIPELINE_EVENTS.labels("extraction", "success").inc()
+            stage = "embedding"
             vectors = []
             # The local runtime accepts at most 64 texts per request.
             for offset in range(0, len(text_chunks), 64):
@@ -103,6 +111,8 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
                 raise RuntimeError(
                     "Embedding provider returned the wrong number of vectors"
                 )
+            observability.PIPELINE_EVENTS.labels("embedding", "success").inc()
+            stage = "index"
             with database.SessionLocal() as session:
                 version = session.scalar(
                     select(DocumentVersion).where(
@@ -143,6 +153,7 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
             observability.DOCUMENTS.inc()
             observability.CHUNKS.inc(len(text_chunks))
     except Exception as error:
+        observability.PIPELINE_EVENTS.labels(stage, "failure").inc()
         observability.JOBS_FAILED.inc()
         observability.log_event(
             "job_attempt_failed",
