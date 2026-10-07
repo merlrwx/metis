@@ -426,7 +426,11 @@ def test_external_source_changes_index_and_deletions_remove_retrieval(monkeypatc
             ).json()
             source = client.post(
                 f"/api/organisations/{organisation['id']}/sources",
-                json={"name": "Library", "type": "microsoft365"},
+                json={
+                    "name": "Library",
+                    "type": "microsoft365",
+                    "organisation_library_approved": True,
+                },
             ).json()
             with database.SessionLocal() as session:
                 client.portal.call(

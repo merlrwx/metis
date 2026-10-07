@@ -34,6 +34,11 @@ def claim_source(session, organisation_id, source_id):
     source = owned_source(session, organisation_id, source_id, lock=True)
     if source is None or source.type != "microsoft365":
         raise ConnectorError("Microsoft 365 source not found")
+    if source.configuration.get("disconnected") or source.configuration.get(
+        "sync_paused"
+    ):
+        session.rollback()
+        return None
     if source_is_busy(source):
         session.rollback()
         return None
@@ -131,6 +136,19 @@ def store_external_document(session, source, remote, data, storage):
         raise
 
 
+def refresh_sync_lease(session, source):
+    session.refresh(source)
+    if source.configuration.get("disconnected") or source.configuration.get(
+        "sync_paused"
+    ):
+        source.sync_started_at = None
+        session.commit()
+        return False
+    source.sync_started_at = datetime.now(UTC)
+    session.commit()
+    return True
+
+
 async def synchronize(
     session, organisation_id, source_id, connector, storage, publisher
 ):
@@ -144,6 +162,8 @@ async def synchronize(
     try:
         changes = await connector.list_documents(source.sync_checkpoint)
         for remote in changes.documents:
+            if not refresh_sync_lease(session, source):
+                return {**counts, "stopped": True}
             document = external_document(
                 session, organisation_id, source_id, remote.external_id
             )
@@ -187,6 +207,8 @@ async def synchronize(
                 counts["unchanged"] += 1
                 continue
             data = await connector.fetch_document(remote)
+            if not refresh_sync_lease(session, source):
+                return {**counts, "stopped": True}
             document, job = store_external_document(
                 session, source, remote, data, storage
             )
@@ -196,6 +218,8 @@ async def synchronize(
                 counts["queued"] += 1
             else:
                 counts["unchanged"] += 1
+        if not refresh_sync_lease(session, source):
+            return {**counts, "stopped": True}
         if changes.full_snapshot:
             seen = {remote.external_id for remote in changes.documents}
             for document in session.scalars(
@@ -246,6 +270,16 @@ async def sync_source(organisation_id, source_id, publisher):
         source = owned_source(session, organisation_id, source_id)
         if source is None or source.type != "microsoft365":
             raise ConnectorError("Microsoft 365 source not found")
+        if source.configuration.get("disconnected") or source.configuration.get(
+            "sync_paused"
+        ):
+            return {
+                "queued": 0,
+                "unchanged": 0,
+                "deleted": 0,
+                "busy": False,
+                "skipped": True,
+            }
         try:
             connector = Microsoft365Source(source.id)
             storage = get_object_storage()

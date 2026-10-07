@@ -106,9 +106,15 @@ class OrganisationView(BaseModel):
 
 
 class SourceCreate(BaseModel):
+    organisation_library_approved: bool = False
     name: str = Field(min_length=1, max_length=255)
     type: str = Field(default="upload", min_length=1, max_length=32)
     configuration: dict[str, Any] = Field(default_factory=dict)
+
+
+class SourceControls(BaseModel):
+    sync_enabled: bool | None = None
+    paused: bool | None = None
 
 
 class SourceView(BaseModel):
@@ -236,6 +242,10 @@ class ChatRequest(KnowledgeScope):
 
 
 class CitationView(BaseModel):
+    source_type: str | None = None
+    source_freshness: str | None = None
+    source_sync_status: str | None = None
+    source_last_synced_at: datetime | None = None
     document_version_id: uuid.UUID | None = None
     source_modified_at: datetime | None = None
     chunk_id: uuid.UUID

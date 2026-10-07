@@ -51,7 +51,10 @@ def list_sources(session: Session, organisation_id: uuid.UUID) -> list[Source]:
     return list(
         session.scalars(
             select(Source)
-            .where(Source.organisation_id == organisation_id)
+            .where(
+                Source.organisation_id == organisation_id,
+                Source.configuration["disconnected"].as_boolean().is_not(True),
+            )
             .order_by(Source.created_at, Source.id)
         )
     )
@@ -70,7 +73,9 @@ def create_document(
         source_id is not None
         and session.scalar(
             select(Source.id).where(
-                Source.id == source_id, Source.organisation_id == organisation_id
+                Source.id == source_id,
+                Source.organisation_id == organisation_id,
+                Source.configuration["disconnected"].as_boolean().is_not(True),
             )
         )
         is None
@@ -121,6 +126,10 @@ def validate_scope(
         statement = select(model.id).where(
             model.organisation_id == organisation_id, model.id.in_(identifiers)
         )
+        if model is Source:
+            statement = statement.where(
+                Source.configuration["disconnected"].as_boolean().is_not(True)
+            )
         if model is Document:
             statement = statement.where(Document.deleted_at.is_(None))
         found = set(session.scalars(statement))

@@ -287,3 +287,56 @@ async def test_upload_adapter_scopes_listing_and_download_to_owned_source(tmp_pa
         assert (await foreign.list_documents()).documents == []
         with pytest.raises(ConnectorError):
             await foreign.fetch_document(changes.documents[0])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stop_after_download", [False, True])
+async def test_interrupted_sync_does_not_restore_disconnected_content(
+    tmp_path, stop_after_download
+):
+    publisher = AsyncMock()
+    with database.SessionLocal() as session:
+        organisation, source = add_source(session)
+        source_id = source.id
+
+        def disconnect():
+            with database.SessionLocal() as concurrent:
+                current = concurrent.get(Source, source_id)
+                current.configuration = {
+                    "disconnected": True,
+                    "sync_paused": True,
+                    "sync_enabled": False,
+                }
+                current.sync_status = "disconnected"
+                current.sync_started_at = None
+                concurrent.commit()
+
+        class Interrupted(FixtureSource):
+            async def list_documents(self, checkpoint=None):
+                result = await super().list_documents(checkpoint)
+                if not stop_after_download:
+                    disconnect()
+                return result
+
+            async def fetch_document(self, document):
+                result = await super().fetch_document(document)
+                disconnect()
+                return result
+
+        connector = Interrupted(remote_document())
+        result = await synchronize(
+            session,
+            organisation.id,
+            source_id,
+            connector,
+            LocalObjectStorage(tmp_path),
+            publisher,
+        )
+        assert result["stopped"] is True
+        assert result["queued"] == 0
+        publisher.assert_not_awaited()
+        assert session.scalar(select(func.count(Document.id))) == 0
+        session.refresh(source)
+        assert source.sync_status == "disconnected"
+        assert source.sync_checkpoint is None
+        assert list(tmp_path.rglob("original")) == []

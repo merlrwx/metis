@@ -24,6 +24,8 @@ async def run():
                 select(Source).where(Source.type == "microsoft365")
             )
             if source.configuration.get("sync_enabled") is True
+            and not source.configuration.get("sync_paused")
+            and not source.configuration.get("disconnected")
         ]
     await broker.startup()
     failures = 0

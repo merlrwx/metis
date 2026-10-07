@@ -1,9 +1,11 @@
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.models import Chunk, Conversation, Document, Message
+from backend.models import Chunk, Conversation, Document, Message, Source
+from backend.schemas import CitationView
 
 
 def get_conversation(
@@ -197,4 +199,55 @@ def accessible_conversations(
             .offset(offset)
             .limit(limit)
         )
+    )
+
+
+def refresh_citation_sources(
+    session: Session, organisation_id: uuid.UUID, citations: list[CitationView]
+) -> list[CitationView]:
+    identifiers = {citation.source_id for citation in citations if citation.source_id}
+    if not identifiers:
+        return citations
+    sources = {
+        source.id: source
+        for source in session.scalars(
+            select(Source).where(
+                Source.organisation_id == organisation_id, Source.id.in_(identifiers)
+            )
+        )
+    }
+    result = []
+    for citation in citations:
+        source = sources.get(citation.source_id)
+        if source is not None:
+            citation = citation.model_copy(
+                update={
+                    "source_type": source.type,
+                    "source_freshness": source_freshness(source),
+                    "source_sync_status": "paused"
+                    if source.configuration.get("sync_paused")
+                    else source.sync_status,
+                    "source_last_synced_at": source.last_synced_at,
+                }
+            )
+        result.append(citation)
+    return result
+
+
+def source_freshness(source: Source) -> str:
+    if source.configuration.get("sync_paused"):
+        return "paused"
+    if source.sync_status == "failed":
+        return "failed"
+    if source.last_synced_at is None:
+        return "not_synced"
+    if not source.configuration.get("sync_enabled"):
+        return "snapshot"
+    last_sync = source.last_synced_at
+    if last_sync.tzinfo is None:
+        last_sync = last_sync.replace(tzinfo=UTC)
+    return (
+        "stale"
+        if datetime.now(UTC) - last_sync > timedelta(minutes=30)
+        else "recent_snapshot"
     )

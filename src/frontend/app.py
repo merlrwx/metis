@@ -275,6 +275,10 @@ def render_knowledge(
         for group in groups:
             st.write(group["name"])
             st.caption(f"{len(group['source_ids'])} sources")
+            if not group["source_ids"]:
+                st.caption(
+                    "This group has no available sources and searches no knowledge. Removed or disconnected sources are omitted."
+                )
             if role in {"owner", "admin"}:
                 with st.form(f"edit_group_{group['id']}"):
                     group_name = st.text_input("Group name", value=group["name"])
@@ -346,6 +350,7 @@ def render_knowledge(
                         "queued": "Queued for synchronization",
                         "syncing": "Synchronizing library",
                         "failed": "Last synchronization failed",
+                        "paused": "Paused; stored knowledge is retained",
                     }.get(
                         status,
                         "Last synchronized: " + source["last_synced_at"]
@@ -358,7 +363,11 @@ def render_knowledge(
                             "Ask your administrator to check the library connection, then retry."
                         )
                     if role in {"owner", "admin"} and st.button(
-                        "Sync now", key=f"sync_source_{source['id']}"
+                        "Sync now",
+                        key=f"sync_source_{source['id']}",
+                        disabled=bool(
+                            source.get("configuration", {}).get("sync_paused")
+                        ),
                     ):
                         try:
                             result = api.request(
@@ -373,6 +382,7 @@ def render_knowledge(
                             )
                         except ApiError as error:
                             show_api_error(error)
+                    render_source_controls(source, organisation_id, token, role)
         else:
             st.info("Uploaded files will appear here as a source.")
         if role in {"owner", "admin"}:
@@ -388,11 +398,26 @@ def render_knowledge(
                     st.caption(
                         "Your administrator must connect a library approved for this whole organisation before its first sync."
                     )
+                    library_approved = st.checkbox(
+                        "This library is approved for every member of this organisation",
+                        value=False,
+                    )
+                    st.caption(
+                        "Mixed-permission libraries are unsupported. Credentials and the drive identity must be configured by the operator."
+                    )
                     auto_sync = st.checkbox(
                         "Synchronize automatically every 15 minutes", value=False
                     )
                 source_submitted = st.form_submit_button("Add source")
-            if source_submitted:
+            if (
+                source_submitted
+                and source_kind == "Microsoft 365 library"
+                and not library_approved
+            ):
+                st.error(
+                    "Confirm organisation-wide library approval before adding this source."
+                )
+            elif source_submitted:
                 try:
                     api.request(
                         "POST",
@@ -400,6 +425,9 @@ def render_knowledge(
                         token=token,
                         payload={
                             "name": source_name,
+                            "organisation_library_approved": library_approved
+                            if source_kind == "Microsoft 365 library"
+                            else False,
                             "type": "microsoft365"
                             if source_kind == "Microsoft 365 library"
                             else "upload",
@@ -529,6 +557,74 @@ def render_knowledge(
         st.info("An organisation owner or admin can add sources and upload documents.")
 
 
+def render_source_controls(
+    source: dict, organisation_id: str, token: str, role: str
+) -> None:
+    configuration = source.get("configuration", {})
+    st.caption("Source ID · " + source["id"])
+    if configuration.get("connection_name"):
+        st.caption("Connected library · " + configuration["connection_name"])
+    if source.get("last_synced_at"):
+        st.caption("Last successful sync · " + source["last_synced_at"])
+    if configuration.get("connection_checked_at"):
+        st.caption("Connection checked · " + configuration["connection_checked_at"])
+    if configuration.get("connection_error"):
+        st.caption(
+            "Connection check failed. Ask the operator to check approval, credentials and permissions."
+        )
+    if role not in {"owner", "admin"}:
+        return
+    path = f"/api/organisations/{organisation_id}/sources/{source['id']}"
+    with st.expander("Library controls"):
+        try:
+            if st.button("Check connection", key=f"check_source_{source['id']}"):
+                result = api.request("POST", path + "/check", token=token)
+                if result["connected"]:
+                    rerun_with_notice(
+                        "Connection confirmed · " + result["library_name"]
+                    )
+                else:
+                    st.error(result["error"])
+            with st.form(f"source_settings_{source['id']}"):
+                enabled = st.checkbox(
+                    "Automatic sync every 15 minutes",
+                    value=bool(configuration.get("sync_enabled")),
+                )
+                paused = st.checkbox(
+                    "Pause synchronization",
+                    value=bool(configuration.get("sync_paused")),
+                )
+                st.caption(
+                    "Pause keeps the indexed snapshot available. Resume allows manual and scheduled sync again."
+                )
+                if st.form_submit_button("Save library settings"):
+                    api.request(
+                        "PATCH",
+                        path,
+                        token=token,
+                        payload={"sync_enabled": enabled, "paused": paused},
+                    )
+                    rerun_with_notice("Library settings saved.")
+            confirmed = st.checkbox(
+                "Disconnect this source and remove its indexed documents",
+                key=f"disconnect_confirm_{source['id']}",
+            )
+            st.caption(
+                "Disconnect excludes documents from answers and removes this source from saved groups. Stored files/history remain; remote files are unchanged."
+            )
+            if st.button(
+                "Disconnect library",
+                key=f"disconnect_source_{source['id']}",
+                disabled=not confirmed,
+            ):
+                api.request("DELETE", path, token=token)
+                rerun_with_notice(
+                    "Library disconnected. Saved groups may now be empty; stored history remains."
+                )
+        except ApiError as error:
+            show_api_error(error)
+
+
 def render_document_detail(organisation_id: str, token: str, role: str) -> None:
     document_id = st.session_state.get(f"document_detail_{organisation_id}")
     if not document_id:
@@ -652,6 +748,24 @@ def render_citations(
                 st.caption("Version · " + citation["document_version_id"])
             if citation.get("source_modified_at"):
                 st.caption("Source modified · " + citation["source_modified_at"])
+            if citation.get("source_type") == "microsoft365":
+                status = citation.get("source_sync_status", "unknown")
+                st.caption(
+                    "Library last synchronized · "
+                    + (citation.get("source_last_synced_at") or "Not yet synchronized")
+                )
+                if citation.get("source_freshness") in {
+                    "stale",
+                    "snapshot",
+                    "not_synced",
+                }:
+                    st.warning(
+                        "This library evidence is a stored snapshot. Check its last synchronization time before relying on current information."
+                    )
+                if status in {"failed", "paused", "queued", "syncing"}:
+                    st.warning(
+                        f"Library synchronization is {status}. This evidence is the stored snapshot; it may be out of date."
+                    )
             st.write(citation.get("snippet", ""))
             version = citation.get("document_version_id")
             if (

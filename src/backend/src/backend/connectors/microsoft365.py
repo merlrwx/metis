@@ -97,6 +97,12 @@ class Microsoft365Source:
             )
         )
 
+    async def check_connection(self):
+        root = await asyncio.to_thread(self._graph_json, self.drive_url + "/root")
+        if not isinstance(root.get("name"), str) or "folder" not in root:
+            raise ConnectorError("Configured library root is invalid")
+        return {"library_name": root["name"][:255]}
+
     async def list_documents(self, checkpoint=None):
         url = checkpoint or self.drive_url + "/root/delta"
         changes = {}

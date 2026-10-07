@@ -187,3 +187,32 @@ async def test_download_size_and_expired_checkpoint_are_bounded(
 def test_credentials_and_library_approval_are_bound_to_source_id(graph_source):
     with pytest.raises(ConnectorError):
         Microsoft365Source(uuid4())
+
+
+@pytest.mark.asyncio
+async def test_connection_check_authenticates_only_configured_library_root(
+    graph_source,
+):
+    requested = []
+
+    class Transport:
+        def open(self, request, timeout):
+            requested.append(request.full_url)
+            if "login.microsoftonline.com" in request.full_url:
+                return json_response({"access_token": "synthetic-access-token"})
+            assert request.full_url == graph_source.drive_url + "/root"
+            assert (
+                request.get_header("Authorization") == "Bearer synthetic-access-token"
+            )
+            return json_response(
+                {
+                    "name": "Approved policies",
+                    "folder": {},
+                    "webUrl": "https://example.sharepoint.com/?token=private",
+                }
+            )
+
+    graph_source.opener = Transport()
+    result = await graph_source.check_connection()
+    assert result == {"library_name": "Approved policies"}
+    assert len(requested) == 2

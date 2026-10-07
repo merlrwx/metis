@@ -8,11 +8,11 @@ Only connect a dedicated library approved for every member of its Metis organisa
 
 ## Setup
 
-1. Create a Microsoft 365 library source in **Knowledge**, or `POST /api/organisations/{id}/sources` with `{"name":"Policies","type":"microsoft365","configuration":{"sync_enabled":false}}` and the owner/admin bearer token. Obtain its UUID from the response or source list.
+1. Create a Microsoft 365 library source in **Knowledge**, or `POST /api/organisations/{id}/sources` with `{"name":"Policies","type":"microsoft365","organisation_library_approved":true,"configuration":{"sync_enabled":false}}` and the owner/admin bearer token. Obtain its UUID from the response or source list.
 2. Register an application in the appropriate Microsoft Entra tenant and grant the required read permissions/admin consent. Configure the application for this approved library and use the least privileges supported by your platform. Graph's documented application permissions for delta include `Files.Read.All`; access is restricted in this adapter to the configured drive. See [Graph delta](https://learn.microsoft.com/en-us/graph/api/driveitem-delta?view=graph-rest-1.0) and [client credentials](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow).
 3. Remove dashes from the Metis source UUID and uppercase it. Environment variable names use `METIS_M365_<SOURCE_UUID_HEX>_` followed by `TENANT_ID`, `CLIENT_ID`, `CLIENT_SECRET`, `DRIVE_ID`, and `ORGANISATION_LIBRARY`. Tenant/client IDs must be UUIDs. Set the approval flag to the literal `true` only for an organisation-wide library. These values are server configuration, not JSON source configuration. The API rejects credential fields for Microsoft 365 sources.
-4. In Kubernetes, provision a `metis-connectors` Secret in namespace `metis` outside Git containing those environment variables. Worker and synchronization CronJob reference that exact unprefixed Secret name; externally managed Secrets are not renamed by Kustomize. Configure the existing object-store credentials as `metis-object-storage` or workload identity. Both API and worker must use the same bucket. No credentials are provisioned by these manifests.
-5. For Compose, store connector environment in an external, untracked file and start with `docker compose -f compose.yaml -f compose.connectors.yaml up --build -d --wait`. Export `METIS_CONNECTOR_ENV_FILE` pointing to that file. Preserve the working `GPTMOCK_BASE_URL` override if using ChatMock inside DevPod. Never put real credentials in this repository.
+4. In Kubernetes, provision a `metis-connectors` Secret in namespace `metis` outside Git containing those environment variables. API, worker and synchronization CronJob reference that exact unprefixed Secret name; externally managed Secrets are not renamed by Kustomize. Configure the existing object-store credentials as `metis-object-storage` or workload identity. Both API and worker must use the same bucket. No credentials are provisioned by these manifests.
+5. For Compose, store connector environment in an external, untracked file and start with `docker compose -f compose.yaml -f compose.semantic.yaml -f compose.connectors.yaml up --build -d --wait`. Export `METIS_CONNECTOR_ENV_FILE` pointing to that file. Preserve the working `GPTMOCK_BASE_URL` override if using ChatMock inside DevPod. Never put real credentials in this repository.
 6. Click **Sync now**, or call `POST /api/organisations/{id}/sources/{source_id}/sync`. Poll the source list for `sync_status`, `last_synced_at` and `sync_error`, then poll document ingestion status before querying. Connection/authentication failures remain visible as failed sync state. A successful sync queues ingestion; it does not mean every document is indexed yet.
 
 ## Periodic operation and recovery
@@ -21,8 +21,37 @@ Opt in at source creation with `configuration.sync_enabled=true`. Kubernetes run
 
 A database lease prevents concurrent synchronization of a source; abandoned leases expire after 15 minutes. Graph/API/download failures preserve the previous checkpoint; retries reuse stored versions. An expired Graph delta checkpoint is cleared, and the next attempt performs a full snapshot that also removes missing files from current retrieval. Queue publication failures leave pending ingestion jobs; a repeated sync or the reconciliation CronJob republishes them. Restore the unavailable dependency and request sync again. To re-enumerate the library or refresh source URLs after a parent-folder rename, request the sync endpoint with `?full=true`. Unchanged file content updates metadata without downloading or indexing again.
 
-PDF, DOCX, UTF-8 TXT and Markdown are supported; other formats are skipped. Downloads are capped at 20 MiB, JSON responses at 4 MiB, and listing at 100 pages/10,000 changed files. Larger change sets fail visibly without advancing the checkpoint. The connector fails on invalid file content instead of silently marking the source synchronized. Graph download redirects are allowed only to HTTPS SharePoint hosts; redirected requests omit the Graph bearer token. See [download content](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content?view=graph-rest-1.0).
+PDF, DOCX, UTF-8 TXT, Markdown and bounded CSV are supported; other formats are skipped. Downloads are capped at 20 MiB, JSON responses at 4 MiB, and listing at 100 pages/10,000 changed files. Larger change sets fail visibly without advancing the checkpoint. The connector fails on invalid file content instead of silently marking the source synchronized. Graph download redirects are allowed only to HTTPS SharePoint hosts; redirected requests omit the Graph bearer token. See [download content](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content?view=graph-rest-1.0).
 
 ## Verification status
 
 Protocol/OAuth/pagination/redirect tests use synthetic transport fixtures; PostgreSQL/Redis tests exercise source sync → real worker → indexing/retrieval, version changes, deletions, citation links and tenant denial. Upload-based live ChatMock chat is independently verified. A real Microsoft 365 tenant has not been configured or tested in this workspace; validate the approved library's consent, drive ID and credentials before enabling it.
+
+## Connection and lifecycle controls
+
+The owner/admin connection check authenticates to the configured drive root
+without listing or downloading documents. It reports the library name and check
+time, or generic operator recovery guidance. Source identity and credentials are
+server-side. The API also needs the external connector environment/Secret for
+this check; the opt-in Compose override and Kubernetes manifests provide it.
+
+Library controls expose the periodic-sync toggle and pause/resume. Pause blocks
+manual and queued/scheduled sync while keeping the stored snapshot searchable.
+Settings changes or disconnect during an active sync return 409; wait for it to
+finish and retry. Last successful sync is shown even after a failed refresh.
+Citations expose origin, last sync and paused/failed/processing state; reopened
+conversation and cached-response citations refresh their source status. An
+automatically synchronized snapshot older than 30 minutes is labelled stale
+(two missed 15-minute intervals); disabled automatic sync is labelled as a stored
+snapshot, never confirmed current information.
+
+Disconnect stops sync, excludes local documents from retrieval, previews and
+downloads, and removes the source from saved groups. Empty groups search nothing,
+never all knowledge. Files, version history and stored answer data remain under
+the [document retention policy](document-management.md); remote library files are
+unchanged. Reconnecting requires a new source identity and operator configuration.
+
+On 2026-10-07 the user deferred real-library validation because no approved library
+is configured. Connection/lifecycle/permissions tests are fixtures; this is not
+a claim of real Microsoft 365 or production validation. No extra connector is
+added without a concrete user need.

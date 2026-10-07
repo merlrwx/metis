@@ -428,7 +428,17 @@ def test_owner_can_add_microsoft365_source_with_periodic_sync():
         ).set_value("Microsoft 365 library")
         app.run()
         app.text_input[-1].set_value("Organisation library")
-        app.checkbox[0].check()
+        next(
+            item
+            for item in app.checkbox
+            if item.label
+            == "This library is approved for every member of this organisation"
+        ).check()
+        next(
+            item
+            for item in app.checkbox
+            if item.label == "Synchronize automatically every 15 minutes"
+        ).check()
         next(button for button in app.button if button.label == "Add source").click()
         app.run()
     assert not app.exception
@@ -436,6 +446,7 @@ def test_owner_can_add_microsoft365_source_with_periodic_sync():
         {
             "name": "Organisation library",
             "type": "microsoft365",
+            "organisation_library_approved": True,
             "configuration": {"sync_enabled": True},
         }
     ]
@@ -766,3 +777,62 @@ def test_batch_upload_continues_after_one_failure_and_reports_each_file():
         "first.txt" in item.value and "retry" in item.value for item in app.error
     )
     assert any("Uploaded policy is processing" in item.value for item in app.success)
+
+
+def test_library_connection_pause_and_disconnect_controls():
+    mutations = []
+    path = f"/api/organisations/{ORG_ID}/sources/{SOURCE_ID}"
+
+    def open_request(request, timeout):
+        current = urlparse(request.full_url).path
+        method = request.get_method()
+        if current == f"/api/organisations/{ORG_ID}/sources" and method == "GET":
+            return io.BytesIO(
+                json.dumps(
+                    [
+                        {
+                            "id": SOURCE_ID,
+                            "name": "Library",
+                            "type": "microsoft365",
+                            "sync_status": "idle",
+                            "configuration": {"sync_enabled": True},
+                            "last_synced_at": "2026-10-07T00:00:00Z",
+                        }
+                    ]
+                ).encode()
+            )
+        if current == path + "/check":
+            return io.BytesIO(b'{"connected":true,"library_name":"Approved policies"}')
+        if current == path and method in {"PATCH", "DELETE"}:
+            mutations.append(
+                (method, json.loads(request.data) if request.data else None)
+            )
+            return io.BytesIO(b"{}")
+        return backend_response(request)
+
+    app = AppTest.from_file(str(APP))
+    app.session_state["metis_token"] = "signed-token"
+    with patch("api_client.urlopen", side_effect=open_request):
+        app.run()
+        app.sidebar.radio[0].set_value("Knowledge").run()
+        next(
+            button for button in app.button if button.label == "Check connection"
+        ).click().run()
+        assert any("Approved policies" in item.value for item in app.success)
+        next(
+            item for item in app.checkbox if item.label == "Pause synchronization"
+        ).check()
+        next(
+            button for button in app.button if button.label == "Save library settings"
+        ).click().run()
+        assert mutations[0] == ("PATCH", {"sync_enabled": True, "paused": True})
+        next(
+            item
+            for item in app.checkbox
+            if item.label.startswith("Disconnect this source")
+        ).check().run()
+        next(
+            button for button in app.button if button.label == "Disconnect library"
+        ).click().run()
+        assert mutations[-1] == ("DELETE", None)
+        assert not app.exception

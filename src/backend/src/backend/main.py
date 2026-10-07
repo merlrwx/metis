@@ -62,6 +62,7 @@ from backend.schemas import (
     SearchRequest,
     SearchResultView,
     SearchView,
+    SourceControls,
     SourceCreate,
     SourceView,
     TestJobCreate,
@@ -394,6 +395,11 @@ def create_source(
     session: Annotated[Session, Depends(get_session)],
     actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
 ) -> SourceView:
+    if payload.type == "microsoft365" and not payload.organisation_library_approved:
+        raise HTTPException(
+            status_code=422,
+            detail="Confirm that this library is approved for all organisation members",
+        )
     if payload.type == "microsoft365" and (
         set(payload.configuration) - {"sync_enabled"}
         or not isinstance(payload.configuration.get("sync_enabled", False), bool)
@@ -407,7 +413,9 @@ def create_source(
         organisation_id,
         payload.name,
         payload.type,
-        payload.configuration,
+        {**payload.configuration, "organisation_library_approved": True}
+        if payload.type == "microsoft365"
+        else payload.configuration,
     )
     if source is None:
         raise HTTPException(status_code=404, detail="Organisation not found")
@@ -421,6 +429,161 @@ def create_source(
     )
     session.commit()
     return source
+
+
+@app.patch(
+    "/api/organisations/{organisation_id}/sources/{source_id}",
+    response_model=SourceView,
+)
+def configure_source_sync(
+    organisation_id: UUID,
+    source_id: UUID,
+    payload: SourceControls,
+    session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+) -> SourceView:
+    from backend.services.source_sync import owned_source, source_is_busy
+
+    source = owned_source(session, organisation_id, source_id, lock=True)
+    if source is None or source.configuration.get("disconnected"):
+        raise HTTPException(status_code=404, detail="Source not found")
+    if source.type != "microsoft365":
+        raise HTTPException(
+            status_code=422, detail="Only connected libraries have sync settings"
+        )
+    if source_is_busy(source):
+        raise HTTPException(
+            status_code=409,
+            detail="Wait for the current sync to finish before changing settings",
+        )
+    configuration = dict(source.configuration)
+    if payload.sync_enabled is not None:
+        configuration["sync_enabled"] = payload.sync_enabled
+    if payload.paused is not None:
+        configuration["sync_paused"] = payload.paused
+        if payload.paused:
+            source.sync_status = "paused"
+        elif source.sync_status == "paused":
+            source.sync_status = "idle"
+    source.configuration = configuration
+    audit.record_event(
+        session,
+        organisation_id,
+        actor.user_id,
+        "source.settings_changed",
+        "source",
+        source_id,
+    )
+    session.commit()
+    return source
+
+
+@app.delete("/api/organisations/{organisation_id}/sources/{source_id}")
+def disconnect_source(
+    organisation_id: UUID,
+    source_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+) -> dict:
+    from sqlalchemy import delete, update
+
+    from backend.models import Document, KnowledgeGroupSource
+    from backend.services.source_sync import owned_source, source_is_busy
+
+    source = owned_source(session, organisation_id, source_id, lock=True)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if source_is_busy(source):
+        raise HTTPException(
+            status_code=409,
+            detail="Wait for the current sync to finish before disconnecting",
+        )
+    source.configuration = {
+        **source.configuration,
+        "disconnected": True,
+        "sync_enabled": False,
+        "sync_paused": True,
+    }
+    source.sync_status = "disconnected"
+    source.sync_checkpoint = None
+    session.execute(
+        update(Document)
+        .where(
+            Document.organisation_id == organisation_id, Document.source_id == source_id
+        )
+        .values(deleted_at=datetime.now(UTC))
+    )
+    session.execute(
+        delete(KnowledgeGroupSource).where(
+            KnowledgeGroupSource.organisation_id == organisation_id,
+            KnowledgeGroupSource.source_id == source_id,
+        )
+    )
+    audit.record_event(
+        session,
+        organisation_id,
+        actor.user_id,
+        "source.disconnected",
+        "source",
+        source_id,
+    )
+    session.commit()
+    return {
+        "status": "disconnected",
+        "retention": "Content is excluded from answers, previews and downloads. Stored files and history remain; remote library files are unchanged. Saved groups lose this source and may become empty.",
+    }
+
+
+@app.post("/api/organisations/{organisation_id}/sources/{source_id}/check")
+async def check_source_connection(
+    organisation_id: UUID,
+    source_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+) -> dict:
+    from backend.connectors.base import ConnectorError
+    from backend.connectors.microsoft365 import Microsoft365Source
+    from backend.services.source_sync import owned_source
+
+    source = owned_source(session, organisation_id, source_id)
+    if source is None or source.configuration.get("disconnected"):
+        raise HTTPException(status_code=404, detail="Source not found")
+    if source.type != "microsoft365":
+        raise HTTPException(
+            status_code=422, detail="This source has no remote connection"
+        )
+    checked_at = datetime.now(UTC).isoformat()
+    try:
+        identity = await Microsoft365Source(source.id).check_connection()
+        result = {"connected": True, "checked_at": checked_at, **identity}
+        source.configuration = {
+            **source.configuration,
+            "connection_checked_at": checked_at,
+            "connection_name": identity["library_name"],
+            "connection_error": None,
+        }
+    except (ConnectorError, OSError, ValueError, KeyError, TypeError) as error:
+        source.configuration = {
+            **source.configuration,
+            "connection_checked_at": checked_at,
+            "connection_error": type(error).__name__,
+        }
+        result = {
+            "connected": False,
+            "checked_at": checked_at,
+            "error": "Ask the operator to check server-side credentials, organisation-wide library approval and Graph read permissions, then retry.",
+        }
+    audit.record_event(
+        session,
+        organisation_id,
+        actor.user_id,
+        "source.connection_checked",
+        "source",
+        source_id,
+        {"connected": result["connected"]},
+    )
+    session.commit()
+    return result
 
 
 @app.post(
@@ -438,8 +601,12 @@ async def synchronize_knowledge_source(
     from backend.services.source_sync import owned_source, source_is_busy
 
     source = owned_source(session, organisation_id, source_id)
-    if source is None:
+    if source is None or source.configuration.get("disconnected"):
         raise HTTPException(status_code=404, detail="Source not found")
+    if source.configuration.get("sync_paused"):
+        raise HTTPException(
+            status_code=409, detail="Resume this source before synchronizing"
+        )
     if source.type != "microsoft365":
         raise HTTPException(
             status_code=422, detail="This source does not support synchronization"
@@ -1048,6 +1215,12 @@ def search_documents(
                 document_title=hit.document.title,
                 source_id=hit.document.source_id,
                 source_name=hit.source.name if hit.source else None,
+                source_type=hit.source.type if hit.source else None,
+                source_freshness=conversations.source_freshness(hit.source)
+                if hit.source
+                else None,
+                source_sync_status=hit.source.sync_status if hit.source else None,
+                source_last_synced_at=hit.source.last_synced_at if hit.source else None,
                 content=hit.chunk.content,
                 page=hit.chunk.page,
                 section=hit.chunk.section,
@@ -1147,6 +1320,9 @@ def chat_with_knowledge(
             response.answer = "The original evidence is no longer available in this scope. Please ask a new question."
             response.citations = []
             response.outcome = "insufficient_evidence"
+        response.citations = conversations.refresh_citation_sources(
+            session, organisation_id, response.citations
+        )
         return response
     history = (
         conversations.get_history(
@@ -1431,6 +1607,9 @@ def get_conversation(
             view.content = "The evidence for this answer is no longer available."
             view.citations = []
             view.outcome = "insufficient_evidence"
+        view.citations = conversations.refresh_citation_sources(
+            session, organisation_id, view.citations
+        )
         message_views.append(view)
     return ConversationView(
         id=conversation.id,

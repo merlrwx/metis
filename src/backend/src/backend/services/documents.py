@@ -62,6 +62,7 @@ def upload_document(
                 Source.organisation_id == organisation_id,
                 Source.type == "upload",
                 Source.name == "File uploads",
+                Source.configuration["disconnected"].as_boolean().is_not(True),
             )
         )
         if source is None:
@@ -80,7 +81,11 @@ def upload_document(
                 Source.organisation_id == organisation_id,
             )
         )
-        if source is None or source.type != "upload":
+        if (
+            source is None
+            or source.type != "upload"
+            or source.configuration.get("disconnected")
+        ):
             return None, None, False
 
     source_uri = f"upload://{source.id}/{quote(filename, safe='')}"
