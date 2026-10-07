@@ -423,6 +423,13 @@ def render_knowledge(
                 "Your knowledge base is empty. Upload a PDF, DOCX, text, or Markdown file."
             )
 
+        for document in documents:
+            if document.get("ingestion_status") != "deleted" and st.button(
+                f"View details · {document['title']}", key=f"detail_{document['id']}"
+            ):
+                st.session_state[f"document_detail_{organisation_id}"] = document["id"]
+        render_document_detail(organisation_id, token, role)
+
         failed = [
             document
             for document in documents
@@ -440,6 +447,10 @@ def render_knowledge(
 
     if role in {"owner", "admin"}:
         st.subheader("Upload a document")
+        st.caption(
+            "Uploads are shared with all members of this organisation. "
+            "Ready means searchable; it does not guarantee an answer to every question."
+        )
         source_options = {None: "File uploads"}
         for source in sources:
             if source["type"] != "upload":
@@ -454,37 +465,165 @@ def render_knowledge(
                 list(source_options),
                 format_func=source_options.__getitem__,
             )
-            uploaded_file = st.file_uploader(
-                "Choose a PDF, DOCX, TXT, or Markdown file",
-                type=["pdf", "docx", "txt", "md", "markdown"],
+            conflict_action = st.selectbox(
+                "If this filename already exists",
+                ["reject", "replace", "new"],
+                format_func={
+                    "reject": "Ask me to choose",
+                    "replace": "Replace the existing document",
+                    "new": "Create a separate document",
+                }.__getitem__,
+            )
+            uploaded_files = st.file_uploader(
+                "Choose a PDF, DOCX, TXT, Markdown, or CSV file",
+                type=["pdf", "docx", "txt", "md", "markdown", "csv"],
+                accept_multiple_files=True,
+                help="Upload up to 10 files at a time. Each file is processed independently.",
             )
             upload_submitted = st.form_submit_button(
                 "Upload and process", type="primary"
             )
         if upload_submitted:
-            if uploaded_file is None:
+            if not uploaded_files:
                 st.error("Choose a document before uploading.")
+            elif len(uploaded_files) > 10:
+                st.error("Choose at most 10 files for one batch.")
             else:
-                try:
-                    with st.spinner("Uploading document and starting ingestion…"):
-                        result = api.request(
-                            "POST",
-                            f"/api/organisations/{organisation_id}/documents/upload",
-                            token=token,
-                            upload=(
-                                uploaded_file.name,
-                                uploaded_file.getvalue(),
-                                uploaded_file.type or "application/octet-stream",
-                            ),
-                            source_id=selected_source,
+                results = []
+                for uploaded_file in uploaded_files:
+                    try:
+                        with st.spinner(f"Uploading {uploaded_file.name}…"):
+                            result = api.request(
+                                "POST",
+                                f"/api/organisations/{organisation_id}/documents/upload",
+                                token=token,
+                                upload=(
+                                    uploaded_file.name,
+                                    uploaded_file.getvalue(),
+                                    uploaded_file.type or "application/octet-stream",
+                                ),
+                                source_id=selected_source,
+                                conflict_action=conflict_action,
+                            )
+                        results.append(
+                            {
+                                "ok": True,
+                                "message": f"{result['document']['title']} is {status_label(result['job']['status']).lower()}.",
+                            }
                         )
-                    rerun_with_notice(
-                        f"{result['document']['title']} is {status_label(result['job']['status']).lower()}."
-                    )
-                except ApiError as error:
-                    show_api_error(error)
+                    except ApiError as error:
+                        results.append(
+                            {
+                                "ok": False,
+                                "message": f"{uploaded_file.name}: {error.detail}. Select this file again to retry.",
+                            }
+                        )
+                st.session_state[f"upload_results_{organisation_id}"] = results
+                st.rerun()
+        for result in st.session_state.get(f"upload_results_{organisation_id}", []):
+            if result["ok"]:
+                st.success(result["message"])
+            else:
+                st.error(result["message"])
     else:
         st.info("An organisation owner or admin can add sources and upload documents.")
+
+
+def render_document_detail(organisation_id: str, token: str, role: str) -> None:
+    document_id = st.session_state.get(f"document_detail_{organisation_id}")
+    if not document_id:
+        return
+    path = f"/api/organisations/{organisation_id}/documents/{document_id}"
+    try:
+        detail = api.request("GET", path + "/detail", token=token)
+        document = detail["document"]
+        with st.expander(f"Document details · {document['title']}", expanded=True):
+            st.caption(detail["visibility"])
+            st.caption(detail["readiness"])
+            st.write(f"Status: {status_label(document['ingestion_status'])}")
+            st.write(f"Pages: {detail['page_count']} · Chunks: {detail['chunk_count']}")
+            st.caption(
+                f"Source: {document['source_id']} · Version: {document['current_version_id']}"
+            )
+            st.caption(
+                f"Last successful indexing: {detail['last_successful_indexing'] or 'Not indexed yet'}"
+            )
+            if detail.get("versions"):
+                st.caption(
+                    "Stored versions · only the current version is used for new answers."
+                )
+                st.dataframe(
+                    detail["versions"], hide_index=True, use_container_width=True
+                )
+                if detail.get("versions_truncated"):
+                    st.caption("Showing the latest 50 stored versions.")
+            st.text(
+                detail["extraction_preview"] or "No extracted text is available yet."
+            )
+            if detail["preview_truncated"]:
+                st.caption("Preview shows the first 4,000 characters.")
+            if role in {"owner", "admin"}:
+                with st.form(f"replace_document_{document_id}"):
+                    replacement = st.file_uploader(
+                        "Replace with a new version",
+                        type=["pdf", "docx", "txt", "md", "markdown", "csv"],
+                        key=f"replacement_{document_id}",
+                    )
+                    st.caption(
+                        "Replaces this document even if the filename differs. Previous versions remain stored but are excluded from new answers."
+                    )
+                    if st.form_submit_button("Replace document"):
+                        if replacement is None:
+                            st.error("Choose a replacement file.")
+                        else:
+                            api.request(
+                                "POST",
+                                f"/api/organisations/{organisation_id}/documents/upload",
+                                token=token,
+                                upload=(
+                                    replacement.name,
+                                    replacement.getvalue(),
+                                    replacement.type or "application/octet-stream",
+                                ),
+                                conflict_action="replace",
+                                replace_document_id=document_id,
+                            )
+                            rerun_with_notice(
+                                "Replacement queued; previous version is excluded from new answers."
+                            )
+                with st.form(f"rename_document_{document_id}"):
+                    title = st.text_input("Document title", value=document["title"])
+                    if st.form_submit_button("Rename document"):
+                        api.request(
+                            "PATCH", path, token=token, payload={"title": title}
+                        )
+                        rerun_with_notice("Document renamed.")
+                if st.button(
+                    "Re-index document", key=f"reindex_document_{document_id}"
+                ):
+                    api.request("POST", path + "/reindex", token=token)
+                    rerun_with_notice("Document queued for re-indexing.")
+                st.caption(
+                    "Remove excludes this document from answers, previews and downloads. "
+                    "Original files, historical versions and saved answer data remain in storage. "
+                    "This is not permanent erasure."
+                )
+                confirmed = st.checkbox(
+                    "Remove this document from the library",
+                    key=f"remove_confirm_{document_id}",
+                )
+                if st.button(
+                    "Remove document",
+                    disabled=not confirmed,
+                    key=f"remove_document_{document_id}",
+                ):
+                    api.request("DELETE", path, token=token)
+                    st.session_state.pop(f"document_detail_{organisation_id}", None)
+                    rerun_with_notice(
+                        "Document removed from the library. Stored history is retained."
+                    )
+    except ApiError as error:
+        show_api_error(error)
 
 
 def render_citations(

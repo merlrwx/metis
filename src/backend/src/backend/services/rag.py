@@ -41,7 +41,7 @@ class AnswerPayload(BaseModel):
 def needs_complete_scope(question: str) -> bool:
     return bool(
         re.search(
-            r"\b(?:all|every)\s+(?:records?|payslips?|invoices?|documents?|payments?|entries)\b|\b(?:total|count)\b",
+            r"\b(?:all|every)\s+(?:records?|payslips?|invoices?|documents?|payments?|entries|rows?)\b|\b(?:total|count|sum|average)\b",
             question,
             re.IGNORECASE,
         )

@@ -1,5 +1,6 @@
 import hashlib
 import uuid
+from typing import Literal
 from urllib.parse import quote
 
 from sqlalchemy import select
@@ -17,6 +18,10 @@ from backend.services.knowledge import ensure_index_ready
 from backend.storage import ObjectStorage
 
 
+class UploadConflict(ValueError):
+    pass
+
+
 def upload_document(
     session: Session,
     organisation_id: uuid.UUID,
@@ -25,12 +30,31 @@ def upload_document(
     data: bytes,
     storage: ObjectStorage,
     source_id: uuid.UUID | None = None,
+    conflict_action: Literal["replace", "new", "reject"] = "replace",
+    replace_document_id: uuid.UUID | None = None,
 ) -> tuple[Document | None, IngestionJob | None, bool]:
     ensure_index_ready(
         session, organisation_id, get_embedding_provider().model_id, lock=True
     )
     if session.get(Organisation, organisation_id) is None:
         return None, None, False
+
+    replacement = None
+    if replace_document_id is not None:
+        replacement = session.scalar(
+            select(Document).where(
+                Document.id == replace_document_id,
+                Document.organisation_id == organisation_id,
+                Document.deleted_at.is_(None),
+            )
+        )
+        if replacement is None or (
+            source_id is not None and source_id != replacement.source_id
+        ):
+            return None, None, False
+        if conflict_action != "replace":
+            raise UploadConflict("A targeted replacement requires Replace mode")
+        source_id = replacement.source_id
 
     if source_id is None:
         source = session.scalar(
@@ -60,12 +84,30 @@ def upload_document(
             return None, None, False
 
     source_uri = f"upload://{source.id}/{quote(filename, safe='')}"
-    document = session.scalar(
+    document = replacement or session.scalar(
         select(Document).where(
             Document.organisation_id == organisation_id,
             Document.source_uri == source_uri,
         )
     )
+    checksum = hashlib.sha256(data).hexdigest()
+    if document is not None:
+        current_version = (
+            session.get(DocumentVersion, document.current_version_id)
+            if document.current_version_id
+            else None
+        )
+        if conflict_action == "reject" and (
+            current_version is None or current_version.checksum != checksum
+        ):
+            raise UploadConflict(
+                "A document with this filename exists. Choose Replace or New document."
+            )
+        if conflict_action == "new":
+            source_uri = (
+                f"upload://{source.id}/{uuid.uuid4()}/{quote(filename, safe='')}"
+            )
+            document = None
     if document is None:
         document = Document(
             organisation_id=organisation_id,
@@ -76,7 +118,6 @@ def upload_document(
         session.add(document)
         session.flush()
 
-    checksum = hashlib.sha256(data).hexdigest()
     version = session.scalar(
         select(DocumentVersion).where(
             DocumentVersion.organisation_id == organisation_id,

@@ -75,3 +75,18 @@ def test_long_section_titles_are_bounded():
 def test_invalid_chunk_strategy_is_rejected(chunk_size, chunk_overlap):
     with pytest.raises(ValueError, match="Chunk overlap"):
         split_document("text", {}, chunk_size, chunk_overlap)
+
+
+def test_minilm_chunks_cover_dense_codes_and_unicode_without_token_truncation():
+    from backend.services.chunking import minilm_tokenizer
+
+    for text in ["INV-2047 AUD 2000.10 " * 70, "漢字" * 700]:
+        chunks = split_document(text, {}, max_tokens=254)
+        covered = set()
+        for chunk in chunks:
+            assert len(minilm_tokenizer().encode(chunk.content).ids) <= 256
+            assert chunk.content == text[chunk.start_offset : chunk.end_offset]
+            covered.update(range(chunk.start_offset, chunk.end_offset))
+        assert all(
+            index in covered for index, char in enumerate(text) if not char.isspace()
+        )

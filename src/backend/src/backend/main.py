@@ -1,7 +1,8 @@
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated
+from datetime import UTC, datetime
+from typing import Annotated, Literal
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
@@ -46,6 +47,7 @@ from backend.schemas import (
     ConversationView,
     CurrentUserView,
     DocumentCreate,
+    DocumentRename,
     DocumentView,
     FeedbackWrite,
     JobView,
@@ -554,6 +556,8 @@ async def upload_document(
     actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
     file: Annotated[UploadFile, File()],
     source_id: Annotated[UUID | None, Form()] = None,
+    conflict_action: Annotated[Literal["replace", "new", "reject"], Form()] = "replace",
+    replace_document_id: Annotated[UUID | None, Form()] = None,
 ) -> UploadView:
     if not QUEUE_CONFIGURED:
         raise HTTPException(status_code=503, detail="Background queue is unavailable")
@@ -578,7 +582,11 @@ async def upload_document(
             data,
             get_object_storage(),
             source_id,
+            conflict_action,
+            replace_document_id,
         )
+    except document_service.UploadConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     except (BotoCoreError, OSError, RuntimeError) as error:
         raise HTTPException(
             status_code=503, detail="Document storage is unavailable"
@@ -619,6 +627,127 @@ def get_document(
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return document_view(session, document)
+
+
+@app.delete("/api/organisations/{organisation_id}/documents/{document_id}")
+def remove_document(
+    organisation_id: UUID,
+    document_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+) -> dict:
+    document = knowledge.get_document(session, organisation_id, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    document.deleted_at = document.deleted_at or datetime.now(UTC)
+    audit.record_event(
+        session,
+        organisation_id,
+        actor.user_id,
+        "document.removed",
+        "document",
+        document.id,
+    )
+    session.commit()
+    return {
+        "status": "removed",
+        "retention": "Removed from answers, previews and downloads. Original files, historical versions and saved answer data remain in storage; this is not permanent erasure.",
+    }
+
+
+@app.patch(
+    "/api/organisations/{organisation_id}/documents/{document_id}",
+    response_model=DocumentView,
+)
+def rename_document(
+    organisation_id: UUID,
+    document_id: UUID,
+    payload: DocumentRename,
+    session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+) -> DocumentView:
+    document = knowledge.get_document(session, organisation_id, document_id)
+    if document is None or document.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    document.title = payload.title
+    audit.record_event(
+        session,
+        organisation_id,
+        actor.user_id,
+        "document.renamed",
+        "document",
+        document.id,
+    )
+    session.commit()
+    return document_view(session, document)
+
+
+@app.get("/api/organisations/{organisation_id}/documents/{document_id}/detail")
+def get_document_detail(
+    organisation_id: UUID,
+    document_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    _: Annotated[OrganisationMembership, Depends(auth.require_membership)],
+) -> dict:
+    from sqlalchemy import func, select
+
+    from backend.models import Chunk, DocumentVersion
+
+    document = knowledge.get_document(session, organisation_id, document_id)
+    if document is None or document.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    version = session.scalar(
+        select(DocumentVersion).where(
+            DocumentVersion.id == document.current_version_id,
+            DocumentVersion.document_id == document_id,
+            DocumentVersion.organisation_id == organisation_id,
+        )
+    )
+    job = document_service.get_document_job(
+        session, organisation_id, document.current_version_id
+    )
+    chunk_count = session.scalar(
+        select(func.count())
+        .select_from(Chunk)
+        .where(
+            Chunk.organisation_id == organisation_id,
+            Chunk.document_version_id == document.current_version_id,
+        )
+    )
+    versions = session.scalars(
+        select(DocumentVersion)
+        .where(
+            DocumentVersion.document_id == document_id,
+            DocumentVersion.organisation_id == organisation_id,
+        )
+        .order_by(DocumentVersion.created_at.desc())
+        .limit(51)
+    ).all()
+    metadata = version.extraction_metadata or {} if version else {}
+    return {
+        "document": document_view(session, document).model_dump(mode="json"),
+        "versions": [
+            {
+                "id": str(item.id),
+                "filename": item.filename,
+                "created_at": item.created_at,
+                "current": item.id == document.current_version_id,
+            }
+            for item in versions[:50]
+        ],
+        "versions_truncated": len(versions) > 50,
+        "source_modified_at": document.external_modified_at,
+        "extraction_preview": (version.extracted_text or "")[:4000] if version else "",
+        "preview_truncated": bool(version and len(version.extracted_text or "") > 4000),
+        "page_count": len(metadata.get("pages", [])),
+        "chunk_count": chunk_count,
+        "last_successful_indexing": metadata.get("last_successful_indexing")
+        or (
+            job.completed_at if job and job.status in {"indexed", "completed"} else None
+        ),
+        "visibility": "Shared with all members of this organisation",
+        "readiness": "Ready means searchable; it does not guarantee an answer to every question.",
+    }
 
 
 @app.get(
@@ -671,6 +800,51 @@ def download_document_version(
 
 
 @app.post(
+    "/api/organisations/{organisation_id}/documents/{document_id}/reindex",
+    response_model=JobView,
+    status_code=202,
+)
+async def reindex_document(
+    organisation_id: UUID,
+    document_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    actor: Annotated[OrganisationMembership, Depends(auth.require_admin)],
+) -> JobView:
+    if not QUEUE_CONFIGURED:
+        raise HTTPException(status_code=503, detail="Background queue is unavailable")
+    document = knowledge.get_document(session, organisation_id, document_id)
+    if document is None or document.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    knowledge.ensure_index_ready(
+        session,
+        organisation_id,
+        embeddings.get_embedding_provider().model_id,
+        lock=True,
+    )
+    job = job_service.retry_failed_document_job(
+        session, organisation_id, document_id, allow_indexed=True
+    )
+    if job is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Document is already processing or has no original version",
+        )
+    audit.record_event(
+        session,
+        organisation_id,
+        actor.user_id,
+        "document.reindex_requested",
+        "document",
+        document_id,
+        {"job_id": str(job.id)},
+    )
+    session.commit()
+    await publish_job(session, job)
+    session.expire_all()
+    return job_service.get_job(session, organisation_id, job.id) or job
+
+
+@app.post(
     "/api/organisations/{organisation_id}/documents/{document_id}/retry",
     response_model=JobView,
     status_code=202,
@@ -683,7 +857,8 @@ async def retry_document_ingestion(
 ) -> JobView:
     if not QUEUE_CONFIGURED:
         raise HTTPException(status_code=503, detail="Background queue is unavailable")
-    if knowledge.get_document(session, organisation_id, document_id) is None:
+    document = knowledge.get_document(session, organisation_id, document_id)
+    if document is None or document.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Document not found")
     job = job_service.retry_failed_document_job(session, organisation_id, document_id)
     if job is None:

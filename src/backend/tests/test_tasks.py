@@ -139,3 +139,45 @@ def test_document_worker_does_not_read_another_organisations_job(tmp_path, sampl
         assert job.attempts == 0
         assert version.extracted_text is None
         assert session.query(Chunk).count() == 0
+
+
+def test_document_worker_batches_large_csv_for_local_runtime(monkeypatch, tmp_path):
+    from backend import embeddings
+
+    monkeypatch.setenv("OBJECT_STORAGE_BACKEND", "local")
+    monkeypatch.setenv("OBJECT_STORAGE_LOCAL_DIR", str(tmp_path))
+    client = new_authenticated_client(app)
+    organisation_id = uuid.UUID(
+        client.post("/api/organisations", json={"name": "Batch"}).json()["id"]
+    )
+    data = ("Period,Net AUD\n" + "January 2026,2000.10\n" * 65).encode()
+    with database.SessionLocal() as session:
+        _, job, _ = document_service.upload_document(
+            session,
+            organisation_id,
+            "pay.csv",
+            "text/csv",
+            data,
+            LocalObjectStorage(tmp_path),
+        )
+        job_id = job.id
+        jobs.mark_queued(session, organisation_id, job_id)
+    provider = embeddings.get_embedding_provider()
+    original = provider.embed_documents
+    batches = []
+
+    def bounded(texts):
+        batches.append(len(texts))
+        assert len(texts) <= 64
+        return original(texts)
+
+    monkeypatch.setattr(provider, "embed_documents", bounded)
+    monkeypatch.setattr(embeddings, "get_embedding_provider", lambda: provider)
+    asyncio.run(run_ingestion_job(str(job_id), str(organisation_id)))
+    assert batches == [64, 1]
+    with database.SessionLocal() as session:
+        assert jobs.get_job(session, organisation_id, job_id).status == "indexed"
+        assert (
+            session.query(Chunk).filter_by(organisation_id=organisation_id).count()
+            == 65
+        )

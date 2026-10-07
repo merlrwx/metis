@@ -645,3 +645,124 @@ def test_reopen_restores_scope_and_allows_feedback_rename_and_delete():
     assert actions[0][1]["vote"] == "problem"
     assert actions[1] == ("PATCH", {"title": "Payroll"})
     assert actions[2] == ("DELETE", None)
+
+
+def test_knowledge_detail_preview_rename_and_honest_removal():
+    requests = []
+    uploads = []
+    detail_path = f"/api/organisations/{ORG_ID}/documents/{DOC_ID}"
+
+    def open_request(request, timeout):
+        path = urlparse(request.full_url).path
+        requests.append((request.get_method(), path))
+        if path == detail_path + "/detail":
+            document = document_response("indexed")[0] | {
+                "source_id": SOURCE_ID,
+                "current_version_id": "version-1",
+            }
+            return io.BytesIO(
+                json.dumps(
+                    {
+                        "document": document,
+                        "visibility": "Shared with all members of this organisation",
+                        "readiness": "Ready means searchable",
+                        "page_count": 2,
+                        "chunk_count": 4,
+                        "last_successful_indexing": "2026-09-01T12:00:00Z",
+                        "extraction_preview": "Period: January 2026\nNet AUD: 2000.10",
+                        "preview_truncated": True,
+                    }
+                ).encode()
+            )
+        if path.endswith("/documents/upload") and request.get_method() == "POST":
+            uploads.append(request.data)
+        if path == detail_path + "/reindex":
+            return io.BytesIO(b'{"status":"queued"}')
+        if path == detail_path and request.get_method() in {"PATCH", "DELETE"}:
+            return io.BytesIO(b"{}")
+        return backend_response(request, documents=document_response("indexed"))
+
+    app = AppTest.from_file(str(APP))
+    app.session_state["metis_token"] = "signed-token"
+    with patch("api_client.urlopen", side_effect=open_request):
+        app.run()
+        app.sidebar.radio[0].set_value("Knowledge").run()
+        next(
+            button for button in app.button if button.label.startswith("View details")
+        ).click().run()
+        assert not app.exception
+        assert any("Net AUD: 2000.10" in item.value for item in app.text)
+        assert any("not permanent erasure" in item.value for item in app.caption)
+        assert next(
+            button for button in app.button if button.label == "Remove document"
+        ).disabled
+        next(
+            item for item in app.text_input if item.label == "Document title"
+        ).set_value("January payslip")
+        next(
+            button for button in app.button if button.label == "Rename document"
+        ).click().run()
+        assert ("PATCH", detail_path) in requests
+        next(
+            button for button in app.button if button.label == "Re-index document"
+        ).click().run()
+        assert ("POST", detail_path + "/reindex") in requests
+        next(
+            item
+            for item in app.file_uploader
+            if item.label == "Replace with a new version"
+        ).set_value(("revised.txt", b"Updated policy", "text/plain"))
+        next(
+            button for button in app.button if button.label == "Replace document"
+        ).click().run()
+        assert len(uploads) == 1
+        assert DOC_ID.encode() in uploads[0]
+        assert b'"replace_document_id"' in uploads[0]
+        next(
+            item
+            for item in app.checkbox
+            if item.label == "Remove this document from the library"
+        ).check().run()
+        next(
+            button for button in app.button if button.label == "Remove document"
+        ).click().run()
+        assert ("DELETE", detail_path) in requests
+        assert not app.exception
+
+
+def test_batch_upload_continues_after_one_failure_and_reports_each_file():
+    app = authenticated_app("Knowledge")
+    app.file_uploader[0].set_value(
+        [
+            ("first.txt", b"First policy", "text/plain"),
+            ("second.txt", b"Second policy", "text/plain"),
+        ]
+    )
+    uploads = []
+
+    def open_request(request, timeout):
+        if request.get_method() == "POST" and request.full_url.endswith(
+            "/documents/upload"
+        ):
+            uploads.append(request.data)
+            if b"First policy" in request.data:
+                raise HTTPError(
+                    request.full_url,
+                    413,
+                    "Too large",
+                    {},
+                    io.BytesIO(b'{"detail":"File exceeds limit"}'),
+                )
+        return backend_response(request)
+
+    with patch("api_client.urlopen", side_effect=open_request):
+        app.run()
+        next(
+            button for button in app.button if button.label == "Upload and process"
+        ).click().run()
+    assert not app.exception
+    assert len(uploads) == 2
+    assert any(
+        "first.txt" in item.value and "retry" in item.value for item in app.error
+    )
+    assert any("Uploaded policy is processing" in item.value for item in app.success)

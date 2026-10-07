@@ -21,6 +21,7 @@ dependencies = [
     "sqlalchemy>=2.0",
     "taskiq>=0.13.0",
     "taskiq-redis>=1.2.4",
+    "tokenizers==0.23.2",
     "uvicorn>=0.53.0",
 ]
 

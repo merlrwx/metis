@@ -80,3 +80,14 @@ def test_currency_from_another_line_cannot_be_assigned_to_net_payment():
     )
     with pytest.raises(ValueError):
         calculate(calculation(), hits)
+
+
+def test_csv_aggregations_require_complete_evidence():
+    from backend.services.rag import needs_complete_scope
+
+    for question in [
+        "Average net pay in this CSV?",
+        "Sum the payments",
+        "Compare all rows",
+    ]:
+        assert needs_complete_scope(question)

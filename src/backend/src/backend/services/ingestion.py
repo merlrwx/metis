@@ -1,8 +1,9 @@
+import csv
 import re
 import unicodedata
 import zipfile
 from dataclasses import dataclass
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import PurePath
 
 from docx import Document as DocxDocument
@@ -10,12 +11,17 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 from pypdf import PdfReader
 
+MAX_CSV_ROWS = 2000
+MAX_CSV_COLUMNS = 50
+MAX_CSV_CELL_CHARACTERS = 1000
+
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_DOCX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
 DOCX_MIME_TYPE = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 )
 MIME_TYPES = {
+    ".csv": {"text/csv", "application/csv", "text/plain"},
     ".pdf": {"application/pdf"},
     ".docx": {DOCX_MIME_TYPE},
     ".txt": {"text/plain"},
@@ -54,7 +60,9 @@ def validate_upload(filename: str, declared_mime_type: str, data: bytes) -> str:
     accepted_types = MIME_TYPES.get(extension)
     mime_type = declared_mime_type.split(";", 1)[0].strip().lower()
     if accepted_types is None or mime_type not in accepted_types:
-        raise UnsupportedDocument("Supported files are PDF, DOCX, TXT and Markdown")
+        raise UnsupportedDocument(
+            "Supported files are PDF, DOCX, TXT, Markdown and CSV"
+        )
 
     if extension == ".pdf":
         if not data[:1024].lstrip().startswith(b"%PDF-"):
@@ -85,6 +93,8 @@ def validate_upload(filename: str, declared_mime_type: str, data: bytes) -> str:
         raise UnsupportedDocument("Text files must use UTF-8 encoding") from error
     if "\x00" in text:
         raise UnsupportedDocument("Text files cannot contain binary data")
+    if extension == ".csv":
+        return "text/csv"
     return "text/markdown" if extension in {".md", ".markdown"} else "text/plain"
 
 
@@ -166,6 +176,33 @@ def _docx_sections(data: bytes) -> list[tuple[str | None, int | None, str]]:
     return sections
 
 
+def _csv_sections(data: bytes) -> list[tuple[str | None, int | None, str]]:
+    try:
+        reader = csv.reader(StringIO(data.decode("utf-8-sig")), strict=True)
+        headers = next(reader, [])
+        if not headers or len(headers) > MAX_CSV_COLUMNS:
+            raise UnsupportedDocument("CSV requires 1–50 column headers")
+        headers = [normalize_text(header) for header in headers]
+        if any(not header for header in headers) or len(set(headers)) != len(headers):
+            raise UnsupportedDocument("CSV column headers must be nonempty and unique")
+        sections = []
+        for row_number, row in enumerate(reader, start=1):
+            if row_number > MAX_CSV_ROWS:
+                raise UnsupportedDocument("CSV exceeds the 2,000 row limit")
+            if len(row) != len(headers):
+                raise UnsupportedDocument("CSV rows must match the column headers")
+            if any(len(cell) > MAX_CSV_CELL_CHARACTERS for cell in row):
+                raise UnsupportedDocument("CSV cells exceed the 1,000 character limit")
+            content = "\n".join(
+                f"{header}: {normalize_text(value)}"
+                for header, value in zip(headers, row, strict=True)
+            )
+            sections.append((f"Row {row_number}", None, content))
+        return sections
+    except csv.Error as error:
+        raise UnsupportedDocument("CSV could not be read; check its quoting") from error
+
+
 def extract_document(filename: str, mime_type: str, data: bytes) -> ExtractedDocument:
     extension = PurePath(filename).suffix.lower()
     if extension == ".pdf":
@@ -184,11 +221,17 @@ def extract_document(filename: str, mime_type: str, data: bytes) -> ExtractedDoc
             offset += len(page_text)
             pages.append({"page": page_number, "start": start, "end": offset})
         extracted_text = "\n\n".join(text_parts).strip()
-        if not extracted_text:
-            raise UnsupportedDocument("No extractable text was found")
+        readable_characters = sum(char.isalnum() for char in extracted_text)
+        if readable_characters < max(20, len(pages) * 20):
+            raise UnsupportedDocument(
+                "Text could not be read. Export a searchable PDF or upload a text "
+                "version; scanned PDFs require OCR before upload."
+            )
         return ExtractedDocument(extracted_text, {"pages": pages})
 
-    if extension == ".docx":
+    if extension == ".csv":
+        sections = _csv_sections(data)
+    elif extension == ".docx":
         sections = _docx_sections(data)
     else:
         text = data.decode("utf-8-sig")

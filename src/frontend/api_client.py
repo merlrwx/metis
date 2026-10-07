@@ -26,6 +26,8 @@ class MetisApi:
         form: dict[str, str] | None = None,
         upload: tuple[str, bytes, str] | None = None,
         source_id: str | None = None,
+        conflict_action: str | None = None,
+        replace_document_id: str | None = None,
         raw: bool = False,
     ):
         headers = {"Accept": "application/json"}
@@ -40,7 +42,9 @@ class MetisApi:
             body = urlencode(form).encode()
             headers["Content-Type"] = "application/x-www-form-urlencoded"
         elif upload is not None:
-            body, content_type = self._multipart(upload, source_id)
+            body, content_type = self._multipart(
+                upload, source_id, conflict_action, replace_document_id
+            )
             headers["Content-Type"] = content_type
 
         request = Request(
@@ -93,7 +97,10 @@ class MetisApi:
 
     @staticmethod
     def _multipart(
-        upload: tuple[str, bytes, str], source_id: str | None
+        upload: tuple[str, bytes, str],
+        source_id: str | None,
+        conflict_action: str | None = None,
+        replace_document_id: str | None = None,
     ) -> tuple[bytes, str]:
         filename, content, mime_type = upload
         safe_filename = "".join(
@@ -114,6 +121,21 @@ class MetisApi:
         )
         boundary = f"metis-{uuid.uuid4().hex}"
         chunks = []
+        if replace_document_id is not None:
+            replacement_id = str(uuid.UUID(replace_document_id))
+            chunks.append(
+                f"--{boundary}\r\n"
+                'Content-Disposition: form-data; name="replace_document_id"\r\n\r\n'
+                f"{replacement_id}\r\n".encode()
+            )
+        if conflict_action is not None:
+            if conflict_action not in {"reject", "replace", "new"}:
+                raise ValueError("Invalid upload conflict action")
+            chunks.append(
+                f"--{boundary}\r\n"
+                'Content-Disposition: form-data; name="conflict_action"\r\n\r\n'
+                f"{conflict_action}\r\n".encode()
+            )
         if source_id:
             chunks.append(
                 f"--{boundary}\r\n"

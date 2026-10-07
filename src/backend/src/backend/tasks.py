@@ -1,6 +1,7 @@
 import asyncio
 import os
 import uuid
+from datetime import UTC, datetime
 from time import perf_counter
 
 from sqlalchemy import delete, select
@@ -75,14 +76,29 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
             extracted = await asyncio.to_thread(
                 ingestion.extract_document, filename, mime_type, data
             )
-            text_chunks = chunking.split_document(extracted.text, extracted.metadata)
+            provider = embeddings.get_embedding_provider()
+            text_chunks = chunking.split_document(
+                extracted.text,
+                extracted.metadata,
+                max_tokens=254
+                if "sentence-transformers/all-MiniLM-L6-v2" in provider.model_id
+                else None,
+            )
             if not text_chunks:
                 raise RuntimeError("Document extraction produced no text chunks")
-            provider = embeddings.get_embedding_provider()
-            observability.EMBEDDINGS.inc()
-            vectors = await asyncio.to_thread(
-                provider.embed_documents, [chunk.content for chunk in text_chunks]
-            )
+            vectors = []
+            # The local runtime accepts at most 64 texts per request.
+            for offset in range(0, len(text_chunks), 64):
+                observability.EMBEDDINGS.inc()
+                batch = text_chunks[offset : offset + 64]
+                batch_vectors = await asyncio.to_thread(
+                    provider.embed_documents, [chunk.content for chunk in batch]
+                )
+                if len(batch_vectors) != len(batch):
+                    raise RuntimeError(
+                        "Embedding provider returned the wrong number of vectors"
+                    )
+                vectors.extend(batch_vectors)
             if len(vectors) != len(text_chunks):
                 raise RuntimeError(
                     "Embedding provider returned the wrong number of vectors"
@@ -97,7 +113,10 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
                 if version is None:
                     raise RuntimeError("Ingestion document version was not found")
                 version.extracted_text = extracted.text
-                version.extraction_metadata = extracted.metadata
+                version.extraction_metadata = {
+                    **extracted.metadata,
+                    "last_successful_indexing": datetime.now(UTC).isoformat(),
+                }
                 session.execute(
                     delete(Chunk).where(
                         Chunk.organisation_id == parsed_organisation_id,

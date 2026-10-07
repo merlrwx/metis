@@ -61,7 +61,11 @@ def get_job(
 
 
 def retry_failed_document_job(
-    session: Session, organisation_id: uuid.UUID, document_id: uuid.UUID
+    session: Session,
+    organisation_id: uuid.UUID,
+    document_id: uuid.UUID,
+    *,
+    allow_indexed: bool = False,
 ) -> IngestionJob | None:
     job = session.scalar(
         select(IngestionJob)
@@ -80,7 +84,10 @@ def retry_failed_document_job(
             Document.organisation_id == organisation_id,
             Document.id == document_id,
             Document.current_version_id == DocumentVersion.id,
-            IngestionJob.status == "failed",
+            Document.deleted_at.is_(None),
+            IngestionJob.status.in_(
+                ["failed", "indexed", "completed"] if allow_indexed else ["failed"]
+            ),
         )
         .with_for_update()
     )

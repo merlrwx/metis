@@ -132,6 +132,12 @@ class DocumentCreate(BaseModel):
     source_uri: str | None = Field(default=None, max_length=2048)
 
 
+class DocumentRename(BaseModel):
+    title: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)
+    ]
+
+
 class DocumentView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
