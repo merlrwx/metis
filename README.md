@@ -107,7 +107,7 @@ The API exposes aggregate Prometheus metrics at `/metrics`; worker metrics liste
 
 ## Local LLM testing
 
-Metis uses LangChain `ChatOpenAI` with ChatMock for generation and a separate pinned CPU MiniLM service for semantic retrieval. Normal CI makes no live model calls.
+Metis uses LangChain `ChatOpenAI` through an OpenAI-compatible chat API and a separate pinned CPU MiniLM service for semantic retrieval. The documented default local workflow still uses the existing ChatMock bridge for generation. For speed-first experiments, `compose.local-llm.yaml` can replace that bridge with a tiny Ollama model running locally. Normal CI makes no live model calls.
 
 From the workstation, with the existing `metis` DevPod configured, run:
 
@@ -120,6 +120,28 @@ This checks the read-only ChatMock service, starts local PostgreSQL/Redis/API/wo
 The host bridge runs on 8001. OpenSSH forwards it into the DevPod on 8002; containers reach `http://host.docker.internal:8002/v1`. API and worker use the semantic Compose override together. See [semantic setup and re-indexing](docs/semantic-search.md) for manual commands, and [local operation and recovery](docs/local-operations.md) for limits, evaluations and backups. For optional Microsoft 365 credentials, invoke `METIS_CONNECTOR_ENV_FILE=/external/path.env bash scripts/local-devpod` inside the DevPod; credentials remain outside Git. No library is required to use uploaded knowledge.
 
 The bridge model defaults to `gpt-5.6-luna`; choose an advertised model with `GPTMOCK_MODEL` in the DevPod environment when running the manual Compose workflow. Chat uses bounded Chat Completions (`use_responses_api=False`). Microsoft 365 live-library validation is deferred because no approved library is configured. Connector fixtures cover its behavior; they do not establish live Microsoft 365 connectivity.
+
+### Fast tiny local chat model
+
+To run chat generation on the local machine instead of the ChatMock bridge, use the local LLM Compose override with the semantic embedding override. It starts Ollama and points the existing OpenAI-compatible chat configuration at `http://llm:11434/v1`. The default model is `smollm2:135m`, chosen for minimum size and latency rather than answer quality.
+
+Pull the tiny model once into the retained `ollama-models` volume:
+
+```bash
+mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml up -d llm
+mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml exec llm ollama pull smollm2:135m
+```
+
+Then start Metis with local semantic retrieval and local chat:
+
+```bash
+LOCAL_LLM_MODEL=smollm2:135m \
+  mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml up --build --wait
+```
+
+Swap tiny models without changing Metis code by setting `LOCAL_LLM_MODEL`, for example `smollm2:360m`, `qwen2.5:0.5b` or `tinyllama:1.1b`. The existing `GPTMOCK_*` variables remain the backend chat configuration; the override only supplies local defaults. Chat model changes do not require re-indexing. Embedding model changes still require re-indexing because stored vectors are model-specific.
+
+Expect very small models to be fast but weak: they may ignore instructions, produce terse answers, miss citation markers or trigger Metis' no-evidence fallback more often. Use this mode for local plumbing, latency and UX checks, not for answer-quality validation.
 
 ## CI and optional model evaluation
 

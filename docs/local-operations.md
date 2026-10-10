@@ -2,6 +2,34 @@
 
 Run `mise run local` from the host with the existing Metis DevPod configured. It creates only read-only service forwards and Metis local Docker services. It never bootstraps Flux or changes a shared cluster. Install DevPod, OpenSSH, kubectl, Python and mise on the host first; run `mise install` in the DevPod. The pinned model is downloaded into the existing Docker model volume. Missing dependencies, occupied incompatible ports and failed service/model checks stop with recovery information. The automatic command is for the documented existing ChatMock bridge, not provisioning a new account.
 
+## Fast tiny local chat model
+
+For a fully local speed-first chat path, combine `compose.local-llm.yaml` with the semantic embedding override. The override runs Ollama, binds its API to host loopback `127.0.0.1:11434`, and configures the backend's existing OpenAI-compatible chat client with:
+
+- `GPTMOCK_BASE_URL=http://llm:11434/v1`
+- `GPTMOCK_API_KEY=ollama-local`
+- `GPTMOCK_MODEL=${LOCAL_LLM_MODEL:-smollm2:135m}`
+- `GPTMOCK_TIMEOUT=${LOCAL_LLM_TIMEOUT:-30}`
+- `GPTMOCK_MAX_RETRIES=${LOCAL_LLM_MAX_RETRIES:-0}`
+
+Download the default tiny model once:
+
+```bash
+mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml up -d llm
+mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml exec llm ollama pull smollm2:135m
+```
+
+Start the local stack:
+
+```bash
+LOCAL_LLM_MODEL=smollm2:135m \
+  mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml up --build --wait
+```
+
+Use `LOCAL_LLM_MODEL=smollm2:360m`, `LOCAL_LLM_MODEL=qwen2.5:0.5b` or another pulled Ollama model to trade more memory and latency for better instruction following. Pull the selected model before starting the full stack if the host cannot download during first chat. These chat model changes do not require re-indexing; only embedding model changes do.
+
+This mode optimises for responsiveness, not quality. Very small local models can fail grounded-answer formatting or citation instructions, so Metis may reject their output and return the configured no-evidence answer. Keep the ChatMock/live evaluation path for answer-quality review.
+
 ## Request and ingestion bounds
 
 JSON bodies are limited to 64 KiB, including chunked transfer. Upload bodies allow a 20 MiB file plus 64 KiB multipart overhead; file validation still enforces 20 MiB. DOCX expansion is limited to 20 MiB, extracted text to 2 million characters, and documents to 2,000 searchable chunks. CSV additionally limits 2,000 rows, 50 columns and 1,000 characters per cell. Split oversized documents and export searchable text for scanned PDFs.
