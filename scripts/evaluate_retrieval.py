@@ -35,6 +35,7 @@ async def evaluate():
     cases = json.loads(fixture.read_text())
     ids = [uuid4(), uuid4()]
     results = []
+    baseline_retrieved = 0
     with TemporaryDirectory() as folder, database.SessionLocal() as session:
         old_folder = os.environ.get("OBJECT_STORAGE_LOCAL_DIR")
         old_backend = os.environ.get("OBJECT_STORAGE_BACKEND")
@@ -100,6 +101,11 @@ async def evaluate():
                     if document_ids[case["id"]] in ranked
                     else None
                 )
+                baseline_retrieved += any(
+                    hit.document.id == document_ids[case["id"]]
+                    and (hit.score >= rag.MIN_RETRIEVAL_SCORE or hit.exact_match)
+                    for hit in hits[:5]
+                )
                 results.append(
                     {
                         "case": case["id"],
@@ -157,6 +163,11 @@ async def evaluate():
                 "negative_cases": negatives,
                 "cases": results,
                 "recall5": sum(case["rank"] is not None for case in results)
+                / len(results),
+                "evidence_recall_before": baseline_retrieved / len(results),
+                "evidence_recall_after": sum(
+                    case["rank"] is not None for case in results
+                )
                 / len(results),
                 "recall1": sum(case["rank"] == 1 for case in results) / len(results),
                 "median_seconds": median(case["seconds"] for case in results),

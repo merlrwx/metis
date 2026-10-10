@@ -1,3 +1,4 @@
+import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -16,6 +17,41 @@ class SearchHit:
     source: Source | None
     score: float
     exact_match: bool = False
+    provenance: frozenset[str] = frozenset()
+    rank_score: float = 0.0
+
+
+def retrieval_settings() -> tuple[int, int, float, int]:
+    return (
+        min(200, max(1, int(os.environ.get("RETRIEVAL_CANDIDATE_COUNT", "40")))),
+        min(40, max(1, int(os.environ.get("RETRIEVAL_EVIDENCE_COUNT", "8")))),
+        min(1.0, max(0.0, float(os.environ.get("RETRIEVAL_MIN_RELEVANCE", "0.2")))),
+        min(32768, max(256, int(os.environ.get("RAG_EVIDENCE_TOKEN_BUDGET", "6000")))),
+    )
+
+
+def relevant_neighbour(query_text: str | None, content: str, score: float) -> bool:
+    _, _, minimum_relevance, _ = retrieval_settings()
+    if score >= minimum_relevance:
+        return True
+    query_terms = set(re.findall(r"[a-z0-9]{3,}", (query_text or "").casefold()))
+    content_terms = set(re.findall(r"[a-z0-9]{3,}", content.casefold()))
+    return bool(
+        query_terms and len(query_terms & content_terms) / len(query_terms) >= 0.5
+    )
+
+
+def provenance_label(hit: SearchHit) -> str:
+    if hit.exact_match:
+        return "exact"
+    if "neighbour" in hit.provenance:
+        return "neighbour"
+    origins = hit.provenance & {"semantic", "lexical"}
+    if origins == {"semantic", "lexical"}:
+        return "both"
+    if origins:
+        return next(iter(origins))
+    return "semantic"
 
 
 def create_organisation(session: Session, name: str) -> Organisation:
@@ -205,6 +241,10 @@ def search_chunks(
     expand_neighbors: bool = False,
     query_text: str | None = None,
 ) -> list[SearchHit]:
+    candidate_count, default_evidence_count, _, token_budget = retrieval_settings()
+    evidence_limit = (
+        min(limit, default_evidence_count) if limit else default_evidence_count
+    )
     validate_scope(session, organisation_id, source_ids, document_ids)
     validate_scope(
         session,
@@ -250,7 +290,7 @@ def search_chunks(
         statement = statement.where(Document.id.in_(document_ids))
 
     rows = session.execute(
-        statement.order_by(distance, Chunk.id).limit(min(limit * 6, 120))
+        statement.order_by(distance, Chunk.id).limit(candidate_count)
     )
     candidates = [
         SearchHit(
@@ -258,6 +298,7 @@ def search_chunks(
             document=document,
             source=source,
             score=1 - distance_value,
+            provenance=frozenset({"semantic"}),
         )
         for chunk, document, source, distance_value in rows
     ]
@@ -289,7 +330,7 @@ def search_chunks(
         lexical_rows = session.execute(
             lexical_statement.order_by(
                 func.ts_rank_cd(text_vector, tsquery).desc(), Chunk.id
-            ).limit(min(limit * 6, 120))
+            ).limit(candidate_count)
         )
         lexical = [
             SearchHit(
@@ -309,53 +350,116 @@ def search_chunks(
             for chunk, document, source, distance_value in lexical_rows
         ]
         candidates = fuse_rankings(candidates, lexical)
-    selected = select_evidence(candidates, limit)
+    selected = select_evidence(
+        candidates,
+        evidence_limit,
+        token_budget=token_budget,
+        allow_same_document=document_id is not None or document_ids is not None,
+    )
     if not expand_neighbors:
         return selected
     # Adjacent chunks carry headings and labels; retain their own citation identity.
-    consumed = sum(len(hit.chunk.content) for hit in selected)
+    from backend.services.chunking import minilm_tokenizer
+
+    tokenizer = minilm_tokenizer()
+    consumed = sum(len(tokenizer.encode(hit.chunk.content).ids) for hit in selected)
     expanded = list(selected)
     seen = {hit.chunk.id for hit in selected}
     for hit in selected:
-        neighbours = session.scalars(
-            select(Chunk)
+        neighbour_distance = Chunk.embedding.cosine_distance(query_embedding)
+        neighbour_statement = (
+            select(Chunk, Document, Source, neighbour_distance.label("distance"))
+            .join(
+                DocumentVersion,
+                (DocumentVersion.id == Chunk.document_version_id)
+                & (DocumentVersion.organisation_id == Chunk.organisation_id),
+            )
+            .join(
+                Document,
+                (Document.id == DocumentVersion.document_id)
+                & (Document.organisation_id == Chunk.organisation_id),
+            )
+            .outerjoin(
+                Source,
+                (Source.id == Document.source_id)
+                & (Source.organisation_id == Document.organisation_id),
+            )
             .where(
                 Chunk.organisation_id == organisation_id,
+                Document.organisation_id == organisation_id,
+                Document.current_version_id == Chunk.document_version_id,
+                Document.deleted_at.is_(None),
                 Chunk.document_version_id == hit.chunk.document_version_id,
                 Chunk.embedding_model == embedding_model,
                 Chunk.chunk_index.in_(
                     [hit.chunk.chunk_index - 1, hit.chunk.chunk_index + 1]
                 ),
             )
-            .order_by(Chunk.chunk_index)
         )
-        for neighbour in neighbours:
+        if source_id is not None:
+            neighbour_statement = neighbour_statement.where(
+                Document.source_id == source_id
+            )
+        if document_id is not None:
+            neighbour_statement = neighbour_statement.where(Document.id == document_id)
+        if source_ids is not None:
+            neighbour_statement = neighbour_statement.where(
+                Document.source_id.in_(source_ids)
+            )
+        if document_ids is not None:
+            neighbour_statement = neighbour_statement.where(
+                Document.id.in_(document_ids)
+            )
+        neighbours = session.execute(neighbour_statement.order_by(Chunk.chunk_index))
+        for (
+            neighbour,
+            neighbour_document,
+            neighbour_source,
+            distance_value,
+        ) in neighbours:
             if (
                 neighbour.id in seen
-                or consumed + len(neighbour.content) > 12000
-                or len(expanded) >= 20
+                or not relevant_neighbour(
+                    query_text, neighbour.content, 1 - distance_value
+                )
+                or consumed + len(tokenizer.encode(neighbour.content).ids)
+                > token_budget
+                or len(expanded) >= evidence_limit * 3
             ):
                 continue
             expanded.append(
                 SearchHit(
-                    neighbour, hit.document, hit.source, hit.score, hit.exact_match
+                    neighbour,
+                    neighbour_document,
+                    neighbour_source,
+                    1 - distance_value,
+                    hit.exact_match,
+                    frozenset({"neighbour"}),
                 )
             )
             seen.add(neighbour.id)
-            consumed += len(neighbour.content)
+            consumed += len(tokenizer.encode(neighbour.content).ids)
     return expanded
 
 
 def select_evidence(
-    candidates: list[SearchHit], limit: int, budget: int = 12000
+    candidates: list[SearchHit],
+    limit: int,
+    budget: int = 12000,
+    *,
+    token_budget: int | None = None,
+    allow_same_document: bool = False,
 ) -> list[SearchHit]:
     """Cover relevant documents first, then fill with distinct bounded excerpts."""
     first = []
     remaining = []
     seen_documents = set()
+    _, _, minimum_relevance, _ = retrieval_settings()
     for hit in candidates:
         if (
-            hit.score >= 0.2 or hit.exact_match
+            hit.score >= minimum_relevance
+            or hit.exact_match
+            or ("lexical" in hit.provenance and hit.rank_score >= 1 / 61)
         ) and hit.document.id not in seen_documents:
             first.append(hit)
             seen_documents.add(hit.document.id)
@@ -373,11 +477,26 @@ def select_evidence(
             for previous in selected
         ):
             continue
+        if (
+            not allow_same_document
+            and any(previous.document.id == hit.document.id for previous in selected)
+            and not (
+                hit.score >= minimum_relevance
+                or hit.exact_match
+                or ("lexical" in hit.provenance and hit.rank_score >= 1 / 61)
+            )
+        ):
+            continue
         length = len(hit.chunk.content)
-        if consumed + length > budget:
+        measured = length
+        if token_budget is not None:
+            from backend.services.chunking import minilm_tokenizer
+
+            measured = len(minilm_tokenizer().encode(hit.chunk.content).ids)
+        if consumed + measured > (token_budget if token_budget is not None else budget):
             continue
         selected.append(hit)
-        consumed += length
+        consumed += measured
     return selected
 
 
@@ -388,12 +507,23 @@ def fuse_rankings(
         return semantic
     scores = {}
     hits = {}
+    provenance = {}
     for ranking in (semantic, lexical):
+        origin = "semantic" if ranking is semantic else "lexical"
         for rank, hit in enumerate(ranking, start=1):
             scores[hit.chunk.id] = scores.get(hit.chunk.id, 0.0) + 1 / (60 + rank)
             hits[hit.chunk.id] = hit
+            provenance.setdefault(hit.chunk.id, set()).add(origin)
     return [
-        hits[identifier]
+        SearchHit(
+            hits[identifier].chunk,
+            hits[identifier].document,
+            hits[identifier].source,
+            hits[identifier].score,
+            hits[identifier].exact_match,
+            frozenset(provenance[identifier]),
+            scores[identifier],
+        )
         for identifier in sorted(
             scores, key=lambda identifier: (-scores[identifier], str(identifier))
         )

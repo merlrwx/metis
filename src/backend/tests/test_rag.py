@@ -1,15 +1,25 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from backend.chat import ChatCompletion
 from backend.embeddings import HashingEmbeddingProvider
-from backend.services.knowledge import SearchHit
+from backend.services.knowledge import (
+    SearchHit,
+    fuse_rankings,
+    provenance_label,
+    relevant_neighbour,
+    retrieval_settings,
+    select_evidence,
+)
 from backend.services.rag import (
     MIN_RETRIEVAL_SCORE,
     NO_EVIDENCE_ANSWER,
+    _grounded_prompt,
     answer_question,
+    supporting_evidence,
 )
 
 EVALUATION_CASES = json.loads(
@@ -46,7 +56,10 @@ def hit(score=0.9):
     return SearchHit(
         chunk=SimpleNamespace(
             id="chunk-id",
+            document_version_id="version-id",
             content="Notify the clinical supervisor after an incident.",
+            start_offset=0,
+            end_offset=100,
             page=2,
             section="Incident response",
         ),
@@ -69,6 +82,129 @@ def test_rag_refuses_without_relevant_evidence_or_valid_citations():
     assert uncited.content == NO_EVIDENCE_ANSWER
     assert uncited.citations == []
     assert uncited.completion.input_tokens == 12
+
+
+def test_weak_vector_lexical_hit_survives_fusion_and_relevance_gate():
+    lexical = hit(0.04)
+    lexical = replace(lexical, provenance=frozenset({"lexical"}))
+    fused = fuse_rankings([], [lexical])
+
+    assert fused[0].provenance == frozenset({"lexical"})
+    assert fused[0].score == 0.04
+    assert (
+        answer_question(
+            "Notify supervisor?",
+            [],
+            fused,
+            FakeChatProvider("Notify the supervisor [C1]."),
+        ).outcome
+        == "answered"
+    )
+
+
+def test_scoped_selection_keeps_multiple_passages_from_one_document():
+    first, second = hit(), hit()
+    first.chunk.id = "one"
+    second.chunk.id = "two"
+    second.chunk.start_offset = 200
+    second.chunk.end_offset = 300
+
+    selected = select_evidence([first, second], 2, allow_same_document=True)
+
+    assert [item.chunk.id for item in selected] == ["one", "two"]
+
+
+def test_unscoped_selection_preserves_document_diversity():
+    first, same_document, other_document = hit(), hit(), hit()
+    first.chunk.id = "one"
+    same_document.chunk.id = "two"
+    same_document.chunk.start_offset = 200
+    same_document.chunk.end_offset = 300
+    other_document.chunk.id = "three"
+    other_document.chunk.document_version_id = "other-version"
+    other_document.document.id = "other-document"
+
+    selected = select_evidence([first, same_document, other_document], 3)
+
+    assert [item.chunk.id for item in selected] == ["one", "three", "two"]
+
+
+def test_neighbour_expansion_excludes_unrelated_adjacent_chunks():
+    neighbours = [
+        ("relevant adjacent passage on clinical incident escalation", 0.05),
+        ("unrelated payroll and tax information", 0.05),
+    ]
+
+    retained = [
+        content
+        for content, score in neighbours
+        if relevant_neighbour("clinical incident escalation", content, score)
+    ]
+
+    assert retained == ["relevant adjacent passage on clinical incident escalation"]
+
+
+def test_overlapping_passages_reconstruct_context_and_keep_citation_ids():
+    first, second = hit(), hit()
+    first.chunk.content = "abcdefghijKL"
+    first.chunk.start_offset = 0
+    first.chunk.end_offset = 12
+    first.chunk.document_version_id = "version"
+    second.chunk.content = "KLmnop"
+    second.chunk.start_offset = 10
+    second.chunk.end_offset = 16
+    second.chunk.document_version_id = "version"
+
+    prompt = _grounded_prompt([first, second])
+
+    assert "abcdefghijKLmnop" in prompt
+    assert "KLKL" not in prompt
+    assert "[C1, C2]" in prompt
+
+
+def test_retrieval_environment_budgets_are_bounded(monkeypatch):
+    monkeypatch.setenv("RETRIEVAL_CANDIDATE_COUNT", "999999")
+    monkeypatch.setenv("RETRIEVAL_EVIDENCE_COUNT", "999999")
+    monkeypatch.setenv("RAG_EVIDENCE_TOKEN_BUDGET", "999999")
+    monkeypatch.setenv("RETRIEVAL_MIN_RELEVANCE", "5")
+
+    assert retrieval_settings() == (200, 40, 1.0, 32768)
+    assert supporting_evidence([hit(0.9)]) == []
+
+
+def test_supported_primary_admits_only_same_version_neighbour_context():
+    primary = hit(0.9)
+    primary.chunk.document_version_id = "active-version"
+    neighbour = replace(
+        hit(0.05),
+        provenance=frozenset({"neighbour"}),
+    )
+    neighbour.chunk.document_version_id = "active-version"
+    unrelated_version = replace(hit(0.05), provenance=frozenset({"neighbour"}))
+    unrelated_version.chunk.document_version_id = "old-version"
+
+    selected = supporting_evidence([primary, neighbour, unrelated_version])
+
+    assert selected == [primary, neighbour]
+    assert provenance_label(neighbour) == "neighbour"
+
+
+@pytest.mark.parametrize(
+    ("origins", "exact", "expected"),
+    [
+        ({"semantic"}, False, "semantic"),
+        ({"lexical"}, False, "lexical"),
+        ({"semantic", "lexical"}, False, "both"),
+        ({"lexical"}, True, "exact"),
+    ],
+)
+def test_diagnostic_provenance_labels(origins, exact, expected):
+    assert (
+        provenance_label(
+            replace(hit(), provenance=frozenset(origins), exact_match=exact)
+        )
+        == expected
+    )
 
 
 def test_rag_keeps_only_retrieved_citations_and_includes_history():

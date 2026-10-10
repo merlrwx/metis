@@ -88,6 +88,25 @@ METIS_SEMANTIC_EVAL_ENABLED=true mise run evaluate-retrieval
 
 Results go to ignored `.agent/semantic-evaluation.json`. This makes no chat-model requests. Missing opt-in/database configuration is rejected. Foreign-tenant evidence and the unanswerable cases are asserted alongside the Recall@5 target. Run the separate opt-in ChatMock check to validate generation.
 
+### Retrieval and context limits
+
+The retrieval and RAG limits can be adjusted with environment variables. Values are clamped to the ranges below:
+
+| Setting | Default | Accepted range |
+| --- | ---: | ---: |
+| `RETRIEVAL_CANDIDATE_COUNT` | 40 | 1–200 candidates per retrieval branch |
+| `RETRIEVAL_EVIDENCE_COUNT` | 8 | 1–40 selected passages |
+| `RETRIEVAL_MIN_RELEVANCE` | 0.2 | 0–1 cosine relevance threshold |
+| `RAG_EVIDENCE_TOKEN_BUDGET` | 6,000 | 256–32,768 tokens during selection and neighbour expansion |
+| `RAG_CONTEXT_TOKEN_BUDGET` | 8,192 | 512–32,768 total context tokens |
+| `RAG_HISTORY_TOKEN_RESERVE` | 512 | 0–32,768 minimum reserved history tokens; actual history size is measured |
+| `RAG_INSTRUCTION_TOKEN_RESERVE` | 1,600 | 256–32,768 reserved tokens |
+| `RAG_GENERATION_TOKEN_RESERVE` | 1,200 | 256–32,768 reserved tokens |
+
+The context budget subtracts measured conversation history and the instruction and generation reservations before fitting evidence. Evidence retains a minimum allocation of 128 tokens.
+
+Run the opt-in retrieval evaluation only against an isolated, migrated PostgreSQL database; it creates synthetic organisations and removes its own data. Configure `DATABASE_URL` for that database, the embedding service variables shown above, and `METIS_SEMANTIC_EVAL_ENABLED=true`, then run `mise run evaluate-retrieval`. The report includes before/after evidence recall. This evaluation was not run during the current phase-1 work because `DATABASE_URL` was unset; the deterministic retrieval/RAG fixture tests ran as part of `./scripts/verify`.
+
 For a host process rather than the optional container, `mise run download-embeddings` installs the extra and downloads the same pinned model. Run `uv run --locked --project src/backend --extra semantic metis-embeddings` to serve it on loopback8003; avoid sharing that environment with concurrent dependency synchronization.
 
 References: [FastEmbed supported models](https://qdrant.github.io/fastembed/examples/Supported_Models/) and [pinned model repository](https://huggingface.co/qdrant/all-MiniLM-L6-v2-onnx/tree/d13954661f83248295ba75c1ed411eef3b7b936e).

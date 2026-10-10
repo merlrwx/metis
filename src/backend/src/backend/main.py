@@ -1435,7 +1435,7 @@ def chat_with_knowledge(
                     "chunk_id": str(hit.chunk.id),
                     "section": hit.chunk.section,
                     "score": round(hit.score, 6),
-                    "provenance": "exact" if hit.exact_match else "semantic_or_lexical",
+                    "provenance": knowledge.provenance_label(hit),
                     "selected": hit.chunk.id in supplied_ids,
                 }
                 for rank, hit in enumerate(hits, start=1)

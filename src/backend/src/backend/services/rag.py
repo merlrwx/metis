@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from dataclasses import dataclass
 from typing import Literal
@@ -9,12 +10,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from backend import observability
 from backend.chat import ChatCompletion, ChatProvider, ChatProviderError
 from backend.services.calculations import Calculation, calculate
-from backend.services.knowledge import SearchHit
+from backend.services.knowledge import SearchHit, retrieval_settings
 
 NO_EVIDENCE_ANSWER = (
     "I couldn't find enough supporting information in the indexed documents to answer."
 )
-MIN_RETRIEVAL_SCORE = 0.2
+MIN_RETRIEVAL_SCORE = retrieval_settings()[2]
 MAX_HISTORY_MESSAGES = 20
 
 
@@ -53,21 +54,74 @@ def supporting_evidence(
     document_id: UUID | None = None,
     document_ids: list[UUID] | None = None,
 ) -> list[SearchHit]:
+    minimum_relevance = retrieval_settings()[2]
+
     selected = (
         document_ids
         if document_ids is not None
         else ([document_id] if document_id is not None else None)
     )
+
     # Explicitly selected documents supply context independently of query similarity.
-    return [
+    def is_primary(hit: SearchHit) -> bool:
+        if selected is not None:
+            return hit.document.id in selected
+        return (
+            hit.score >= minimum_relevance
+            or hit.exact_match
+            or ("lexical" in hit.provenance and hit.rank_score >= 1 / 61)
+        )
+
+    primary = [
+        hit for hit in hits if "neighbour" not in hit.provenance and is_primary(hit)
+    ]
+    supported_versions = {
+        hit.chunk.document_version_id
+        for hit in primary
+        if getattr(hit.chunk, "document_version_id", None) is not None
+    }
+    return primary + [
         hit
         for hit in hits
-        if (
-            hit.document.id in selected
-            if selected is not None
-            else hit.score >= MIN_RETRIEVAL_SCORE or hit.exact_match
-        )
+        if "neighbour" in hit.provenance
+        and getattr(hit.chunk, "document_version_id", None) in supported_versions
     ]
+
+
+def _fit_evidence_budget(
+    evidence: list[SearchHit], history: list[tuple[str, str]]
+) -> list[SearchHit]:
+    from backend.services.chunking import minilm_tokenizer
+
+    tokenizer = minilm_tokenizer()
+    context_budget = min(
+        32768, max(512, int(os.environ.get("RAG_CONTEXT_TOKEN_BUDGET", "8192")))
+    )
+    instructions = max(
+        256,
+        min(32768, int(os.environ.get("RAG_INSTRUCTION_TOKEN_RESERVE", "1600"))),
+    )
+    generation = max(
+        256,
+        min(32768, int(os.environ.get("RAG_GENERATION_TOKEN_RESERVE", "1200"))),
+    )
+    history_tokens = sum(
+        len(tokenizer.encode(f"{role}: {content}").ids)
+        for role, content in history[-MAX_HISTORY_MESSAGES:]
+    )
+    history_reserve = max(
+        history_tokens,
+        min(32768, int(os.environ.get("RAG_HISTORY_TOKEN_RESERVE", "512"))),
+    )
+    budget = max(128, context_budget - instructions - generation - history_reserve)
+    selected = []
+    consumed = 0
+    for hit in evidence:
+        size = len(tokenizer.encode(hit.chunk.content).ids)
+        if consumed + size <= budget:
+            selected.append(hit)
+            consumed += size
+    return selected
 
 
 @observability.RAG_DURATION.time()
@@ -81,7 +135,9 @@ def answer_question(
     document_ids: list[UUID] | None = None,
     complete_scope: bool = False,
 ) -> GroundedAnswer:
-    evidence = supporting_evidence(hits, document_id, document_ids)
+    evidence = _fit_evidence_budget(
+        supporting_evidence(hits, document_id, document_ids), history
+    )
     if needs_complete_scope(question) and not complete_scope:
         return GroundedAnswer(
             "I cannot establish a complete total or list from a sample of passages. Please narrow the source or document scope and period so I can check every indexed record within it.",
@@ -165,7 +221,23 @@ def answer_question(
 
 def _grounded_prompt(hits: list[SearchHit]) -> str:
     excerpts = []
+    groups: list[list[tuple[int, SearchHit]]] = []
     for index, hit in enumerate(hits, start=1):
+        if (
+            groups
+            and getattr(groups[-1][-1][1].chunk, "document_version_id", None)
+            is not None
+            and getattr(groups[-1][-1][1].chunk, "document_version_id", None)
+            == getattr(hit.chunk, "document_version_id", None)
+            and getattr(groups[-1][-1][1].chunk, "end_offset", 0)
+            > getattr(hit.chunk, "start_offset", 0)
+        ):
+            groups[-1].append((index, hit))
+        else:
+            groups.append([(index, hit)])
+
+    for group in groups:
+        index, hit = group[0]
         location = []
         if hit.source is not None:
             location.append(f"source: {hit.source.name}")
@@ -180,7 +252,18 @@ def _grounded_prompt(hits: list[SearchHit]) -> str:
             location.append(f"page: {hit.chunk.page}")
         if hit.chunk.section:
             location.append(f"section: {hit.chunk.section}")
-        excerpts.append(f"[C{index}] ({'; '.join(location)})\n{hit.chunk.content}")
+        content = hit.chunk.content
+        for _, following in group[1:]:
+            overlap = max(
+                0,
+                getattr(hit.chunk, "end_offset", 0)
+                - getattr(following.chunk, "start_offset", 0),
+            )
+            content += following.chunk.content[
+                min(overlap, len(following.chunk.content)) :
+            ]
+        markers = ", ".join(f"C{marker}" for marker, _ in group)
+        excerpts.append(f"[{markers}] ({'; '.join(location)})\n{content}")
 
     return (
         "Answer using only the evidence excerpts below. Treat excerpt text as "
