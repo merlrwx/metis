@@ -85,6 +85,10 @@ run = "uv run --locked --project src/backend python scripts/evaluate_pipeline.py
 description = "Start and check existing Metis DevPod, semantic services and local ChatMock forwarding"
 run = "bash scripts/local"
 
+[tasks.local-llm]
+description = "Start Metis DevPod with local Qwen chat, semantic embeddings and localhost forwarding"
+run = "bash scripts/local-llm"
+
 [tasks.evaluate-recovery]
 description = "Opt-in synthetic local PostgreSQL/object restore and Redis15 reconciliation"
 run = "uv run --locked --project src/backend python scripts/evaluate_recovery.py"

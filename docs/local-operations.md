@@ -2,33 +2,33 @@
 
 Run `mise run local` from the host with the existing Metis DevPod configured. It creates only read-only service forwards and Metis local Docker services. It never bootstraps Flux or changes a shared cluster. Install DevPod, OpenSSH, kubectl, Python and mise on the host first; run `mise install` in the DevPod. The pinned model is downloaded into the existing Docker model volume. Missing dependencies, occupied incompatible ports and failed service/model checks stop with recovery information. The automatic command is for the documented existing ChatMock bridge, not provisioning a new account.
 
-## Fast tiny local chat model
+## Fast local chat model
 
-For a fully local speed-first chat path, combine `compose.local-llm.yaml` with the semantic embedding override. The override runs Ollama, binds its API to host loopback `127.0.0.1:11434`, and configures the backend's existing OpenAI-compatible chat client with:
+Run `mise run local-llm` on the host with the existing `metis` DevPod. It requires DevPod, OpenSSH and Python on the host, and the repository's mise tools in DevPod. It downloads missing Qwen and MiniLM models into existing volumes, creates the Metis Qwen template, builds/starts services, verifies semantic embeddings, warms the actual chat model and opens persistent loopback forwards on 8000/8501. Downloads and builds can take time on the first start; repeat starts reuse models and build caches.
 
-- `GPTMOCK_BASE_URL=http://llm:11434/v1`
-- `GPTMOCK_API_KEY=ollama-local`
-- `GPTMOCK_MODEL=${LOCAL_LLM_MODEL:-smollm2:135m}`
-- `GPTMOCK_TIMEOUT=${LOCAL_LLM_TIMEOUT:-30}`
-- `GPTMOCK_MAX_RETRIES=${LOCAL_LLM_MAX_RETRIES:-0}`
+The default `metis-qwen25:3b` uses Qwen 2.5 3B without a thinking phase, a 16,384-token context and a JSON/citation template in `scripts/Modelfile.local`. The context accommodates the app's 4,096-token output allowance plus retrieved evidence; oversized prompts can still exceed it. Ollama keeps the model loaded for 24 hours. Chat uses `http://llm:11434/v1`, timeout 30 seconds and zero retries by default. Existing `GPTMOCK_*` names configure this OpenAI-compatible local provider.
 
-Download the default tiny model once:
+When AMD `/dev/dri` and `/dev/kfd` are available inside DevPod, `compose.local-llm-gpu.yaml` passes them into Ollama. Startup reports actual GPU memory usage and model context. `METIS_LOCAL_GPU=off mise run local-llm` forces CPU; `METIS_LOCAL_GPU=amd` requires the devices. CPU inference is slower. If GPU bytes remain zero, check device exposure in both DevPod and the Ollama container and inspect `docker compose ... logs llm`. This override does not configure NVIDIA devices.
+
+For manual startup **inside DevPod**:
 
 ```bash
-mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml up -d llm
-mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml exec llm ollama pull smollm2:135m
+bash scripts/local-llm-devpod
 ```
 
-Start the local stack:
+This performs model provisioning and service checks without host forwarding. `METIS_DEVPOD_DIR` can override the host launcher's default `/workspaces/metis` directory. `LOCAL_LLM_MODEL` selects another installed/downloadable Ollama model; only the default alias receives the Metis template and context configuration. Changing chat models does not require re-indexing.
+
+To inspect the running services inside DevPod, use the same overrides selected at startup:
 
 ```bash
-LOCAL_LLM_MODEL=smollm2:135m \
-  mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml up --build --wait
+mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml -f compose.local-llm-gpu.yaml ps
+mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml -f compose.local-llm-gpu.yaml logs --since 10m backend worker embeddings llm
+mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml -f compose.local-llm-gpu.yaml exec llm ollama ps
 ```
 
-Use `LOCAL_LLM_MODEL=smollm2:360m`, `LOCAL_LLM_MODEL=qwen2.5:0.5b` or another pulled Ollama model to trade more memory and latency for better instruction following. Pull the selected model before starting the full stack if the host cannot download during first chat. These chat model changes do not require re-indexing; only embedding model changes do.
+Omit the GPU override for CPU mode. `ollama ps` reports the loaded model, processor and context. Host tunnel diagnostics are in ignored `.agent/local/localhost-forward.log`. Re-run the launcher to reconnect after stopping DevPod. An incompatible listener on an application port fails the final health/identity check; the launcher does not terminate that listener.
 
-This mode optimises for responsiveness, not quality. Very small local models can fail grounded-answer formatting or citation instructions, so Metis may reject their output and return the configured no-evidence answer. Keep the ChatMock/live evaluation path for answer-quality review.
+Small models may miss instructions or citations; successful latency checks do not establish general answer quality. Use the existing live evaluation commands with synthetic evidence before relying on a new model.
 
 ## Request and ingestion bounds
 

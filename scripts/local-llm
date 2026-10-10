@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Run on the host: local models in DevPod and persistent loopback forwarding.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+for tool in devpod ssh python3; do
+  command -v "$tool" >/dev/null || { echo "Install $tool before running mise run local-llm" >&2; exit 1; }
+done
+mkdir -p .agent/local
+chmod 700 .agent/local
+printf -v remote_command 'cd %q && METIS_LOCAL_GPU=%q LOCAL_LLM_MODEL=%q bash scripts/local-llm-devpod' \
+  "${METIS_DEVPOD_DIR:-/workspaces/metis}" "${METIS_LOCAL_GPU:-auto}" "${LOCAL_LLM_MODEL:-metis-qwen25:3b}"
+python3 - "$remote_command" <<'PY'
+import json
+from pathlib import Path
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
+
+folder = Path.cwd() / ".agent/local"
+# A relative path also fits Unix socket limits in deeply nested worktrees.
+control = Path(".agent/local/local-llm-ssh.sock")
+ssh = ["ssh", "-S", str(control)]
+
+def connected():
+    return subprocess.run(
+        ssh + ["-O", "check", "metis.devpod"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    ).returncode == 0
+
+if not connected():
+    control.unlink(missing_ok=True)
+    with (folder / "localhost-forward.log").open("ab") as log:
+        # A separate session survives the launching terminal or agent command.
+        process = subprocess.Popen(
+            [
+                "ssh", "-T", "-M", "-S", str(control),
+                "-o", "BatchMode=yes", "-o", "ServerAliveInterval=30",
+                "-o", "ServerAliveCountMax=3",
+                "-o", "ProxyCommand=devpod ssh --stdio --start-services=false --user vscode metis",
+                "metis.devpod", "sleep infinity",
+            ],
+            stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True,
+        )
+    (folder / "localhost-forward.pid").write_text(f"{process.pid}\n")
+    for attempt in range(100):
+        if connected():
+            break
+        if process.poll() is not None:
+            raise SystemExit("SSH failed; inspect .agent/local/localhost-forward.log")
+        time.sleep(0.1)
+    else:
+        raise SystemExit("SSH not ready; inspect .agent/local/localhost-forward.log")
+subprocess.run(ssh + ["metis.devpod", sys.argv[1]], check=True)
+for port in (8000, 8501):
+    with socket.socket() as connection:
+        connection.settimeout(1)
+        if connection.connect_ex(("127.0.0.1", port)) != 0:
+            subprocess.run(
+                ssh + ["-O", "forward", "-L", f"127.0.0.1:{port}:127.0.0.1:{port}", "metis.devpod"],
+                check=True,
+            )
+# Compose cannot check frontend readiness because it has no container healthcheck.
+deadline = time.monotonic() + 60
+while time.monotonic() < deadline:
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8000/api/info", timeout=5) as response:
+            if json.load(response).get("name") != "Metis":
+                raise SystemExit("Port 8000 belongs to another application")
+        for address in ("http://127.0.0.1:8000/health", "http://127.0.0.1:8501/_stcore/health"):
+            with urllib.request.urlopen(address, timeout=5) as response:
+                assert response.status == 200
+        break
+    except (OSError, json.JSONDecodeError):
+        time.sleep(1)
+else:
+    raise SystemExit("Metis HTTP readiness failed; inspect service logs and .agent/local/localhost-forward.log")
+print("Metis: http://localhost:8501\nAPI: http://localhost:8000/docs\nLocal chat and semantic embeddings checked.")
+PY

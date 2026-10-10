@@ -107,7 +107,7 @@ The API exposes aggregate Prometheus metrics at `/metrics`; worker metrics liste
 
 ## Local LLM testing
 
-Metis uses LangChain `ChatOpenAI` through an OpenAI-compatible chat API and a separate pinned CPU MiniLM service for semantic retrieval. The documented default local workflow still uses the existing ChatMock bridge for generation. For speed-first experiments, `compose.local-llm.yaml` can replace that bridge with a tiny Ollama model running locally. Normal CI makes no live model calls.
+Metis uses LangChain `ChatOpenAI` through an OpenAI-compatible chat API and a separate pinned CPU MiniLM service for semantic retrieval. The documented default local workflow still uses the existing ChatMock bridge for generation. Use `mise run local-llm` for fast local Ollama generation with automatic AMD device passthrough. Normal CI makes no live model calls.
 
 From the workstation, with the existing `metis` DevPod configured, run:
 
@@ -121,27 +121,21 @@ The host bridge runs on 8001. OpenSSH forwards it into the DevPod on 8002; conta
 
 The bridge model defaults to `gpt-5.6-luna`; choose an advertised model with `GPTMOCK_MODEL` in the DevPod environment when running the manual Compose workflow. Chat uses bounded Chat Completions (`use_responses_api=False`). Microsoft 365 live-library validation is deferred because no approved library is configured. Connector fixtures cover its behavior; they do not establish live Microsoft 365 connectivity.
 
-### Fast tiny local chat model
+### Fast local chat model
 
-To run chat generation on the local machine instead of the ChatMock bridge, use the local LLM Compose override with the semantic embedding override. It starts Ollama and points the existing OpenAI-compatible chat configuration at `http://llm:11434/v1`. The default model is `smollm2:135m`, chosen for minimum size and latency rather than answer quality.
-
-Pull the tiny model once into the retained `ollama-models` volume:
+From the host with the existing `metis` DevPod, run:
 
 ```bash
-mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml up -d llm
-mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml exec llm ollama pull smollm2:135m
+mise run local-llm
 ```
 
-Then start Metis with local semantic retrieval and local chat:
+This starts local Ollama with **Qwen 2.5 3B** (`metis-qwen25:3b`), local MiniLM embeddings and localhost forwarding. It downloads missing models, builds the services and warms the chat model before returning. Open **http://localhost:8501**; API documentation is at **http://localhost:8000/docs**. Existing data and model volumes are retained. Chat uses `http://llm:11434/v1`; the `GPTMOCK_*` configuration names also support this real local provider.
 
-```bash
-LOCAL_LLM_MODEL=smollm2:135m \
-  mise exec -- docker compose -f compose.yaml -f compose.semantic.yaml -f compose.local-llm.yaml up --build --wait
-```
+The model uses a 16,384-token context and a template reinforcing Metis' JSON and citation contract. Ollama keeps it loaded for 24 hours to avoid repeated cold starts. Available AMD `/dev/dri` and `/dev/kfd` devices are passed through automatically; otherwise it uses CPU. Set `METIS_LOCAL_GPU=off` to disable this or `METIS_LOCAL_GPU=amd` to require those devices. Both devices must already be exposed to the outer DevPod. The startup check reports actual GPU bytes and context length.
 
-Swap tiny models without changing Metis code by setting `LOCAL_LLM_MODEL`, for example `smollm2:360m`, `qwen2.5:0.5b` or `tinyllama:1.1b`. The existing `GPTMOCK_*` variables remain the backend chat configuration; the override only supplies local defaults. Chat model changes do not require re-indexing. Embedding model changes still require re-indexing because stored vectors are model-specific.
+On an RX 5700 XT, Qwen 2.5 3B produced cited synthetic answers in about 0.7 seconds with cached prompts; an initial model load plus a fresh 4,000-token prompt took about 6 seconds. These measurements depend on hardware, prompt size and cache state. The 1.5B model was faster but repeatedly omitted citations on larger prompts, causing Metis to reject its answers. The 3B model still has weaker reasoning and outcome classification than larger models; validate answer quality against your evidence. `LOCAL_LLM_MODEL` selects another installed or downloadable Ollama model, which uses its own template and context settings. Chat model changes do not require re-indexing; embedding model changes do.
 
-Expect very small models to be fast but weak: they may ignore instructions, produce terse answers, miss citation markers or trigger Metis' no-evidence fallback more often. Use this mode for local plumbing, latency and UX checks, not for answer-quality validation.
+See [local operation and recovery](docs/local-operations.md) for manual Compose commands and troubleshooting.
 
 ## CI and optional model evaluation
 

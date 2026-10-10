@@ -1,0 +1,6 @@
+# AMD devices must also be available in the outer DevPod container.
+services:
+  llm:
+    devices:
+      - /dev/dri:/dev/dri
+      - /dev/kfd:/dev/kfd
