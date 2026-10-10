@@ -9,17 +9,20 @@ from tempfile import TemporaryDirectory
 from time import perf_counter
 from uuid import uuid4
 
-from backend.models import Organisation
+from backend.evaluation import failure_stage, provider_details
+from backend.evaluation_fixtures import build_synthetic_document
+from backend.models import DocumentVersion, Organisation
 from backend.services import documents, followups, knowledge, rag
 from backend.storage import LocalObjectStorage
 from backend.tasks import run_ingestion_job
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 
-from backend import database, embeddings
+from backend import chat, database, embeddings
 
 
 async def evaluate():
     provider = embeddings.get_embedding_provider()
+    chat_provider = chat.get_chat_provider()
     fixture = Path(
         os.environ.get(
             "METIS_RETRIEVAL_FIXTURE",
@@ -50,12 +53,15 @@ async def evaluate():
             storage = LocalObjectStorage(Path(folder))
             document_ids = {}
             for case in cases:
+                filename, mime_type, contents = build_synthetic_document(
+                    case["text"], case["format"], case["supporting_sections"][0]
+                )
                 document, job, _ = documents.upload_document(
                     session,
                     ids[0],
-                    f"{case['id']}.txt",
-                    "text/plain",
-                    case["text"].encode(),
+                    filename,
+                    mime_type,
+                    contents,
                     storage,
                 )
                 document_ids[case["id"]] = document.id
@@ -98,6 +104,12 @@ async def evaluate():
                     {
                         "case": case["id"],
                         "rank": rank,
+                        "failure_stage": failure_stage(
+                            expected_retrieved=rank is not None,
+                            expected_supplied=rank is not None,
+                        )
+                        if rank is None
+                        else None,
                         "best_score": round(hits[0].score, 4) if hits else None,
                         "seconds": round(perf_counter() - started, 4),
                     }
@@ -127,7 +139,21 @@ async def evaluate():
                     }
                 )
             report = {
-                "model": provider.model_id,
+                **provider_details(provider, chat_provider),
+                "index_readiness": session.get(Organisation, ids[0]).index_status,
+                "reindex_readiness": "ready"
+                if session.get(Organisation, ids[0]).index_status == "ready"
+                else "reindexing",
+                "extraction_availability": "available"
+                if session.scalar(
+                    select(func.count())
+                    .select_from(DocumentVersion)
+                    .where(
+                        DocumentVersion.organisation_id == ids[0],
+                        DocumentVersion.extracted_text.is_not(None),
+                    )
+                )
+                else "unavailable",
                 "negative_cases": negatives,
                 "cases": results,
                 "recall5": sum(case["rank"] is not None for case in results)

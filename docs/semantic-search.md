@@ -49,6 +49,33 @@ The migration changes the vector column from fixed 1536 dimensions to variable d
 
 ## Evaluation
 
+The synthetic QA fixtures contain at least 50 annotated cases, including paraphrase,
+multi-paragraph, multi-turn, negative and multi-citation examples. Fixture annotations
+record an expected answer, synthetic source version, format, supporting sections and
+chunk identifiers. Retrieval and pipeline evaluations turn each annotated format into
+real PDF, DOCX, Markdown, TXT or CSV bytes and run those files through the normal upload
+and ingestion path. CSV fixtures use labeled table columns. Deterministic tests validate
+each generated file with upload validation and the production extractor. Reports identify
+failures as `evidence_not_retrieved`,
+`evidence_retrieved_but_discarded`, or
+`evidence_supplied_answer_or_citation_incorrect`. Reports include configured embedding
+and chat identities and index/re-index readiness. Case text stays synthetic.
+
+`evaluate-retrieval` needs an isolated migrated PostgreSQL database and a reachable
+embedding service configured for that database. `evaluate-answers` needs
+`METIS_LIVE_CHAT_EVAL_ENABLED=true` and an explicitly configured local GPTMock; it
+evaluates answer generation from synthetic excerpts without PostgreSQL. `evaluate-pipeline`
+needs both services and an isolated migrated PostgreSQL database whose name ends in
+`_verify` or `_evaluation`. These opt-in commands are available through the matching
+`mise run evaluate-retrieval`, `mise run evaluate-answers`, and
+`mise run evaluate-pipeline` tasks.
+
+Production metadata tracing is disabled by default. Set
+`METIS_DIAGNOSTICS_ENABLED=true` for restricted diagnostic runs to emit extraction
+availability, candidate rank/score/provenance, selected evidence and outcome metadata.
+Trace events contain identifiers and section labels, never question or source snippets;
+limit access to the application diagnostic logs.
+
 Provision and migrate an isolated PostgreSQL database first. The evaluation creates only unique synthetic organisations, stores originals in a temporary directory, runs the actual ingestion function, retrieves from PostgreSQL and removes its own data afterward.
 
 ```bash

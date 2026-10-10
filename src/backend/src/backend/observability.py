@@ -24,6 +24,19 @@ LATENCY_BUCKETS = (0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300)
 
 request_id = ContextVar("request_id", default="")
 logger = logging.getLogger("metis")
+
+
+def diagnostics_enabled() -> bool:
+    """Restricted per-request diagnostics are disabled unless explicitly opted in."""
+    return os.environ.get("METIS_DIAGNOSTICS_ENABLED") == "true"
+
+
+def diagnostic_event(event: str, **fields) -> None:
+    """Emit metadata-only diagnostic events; never pass prompts or source text."""
+    if diagnostics_enabled():
+        log_event(f"diagnostic_{event}", **fields)
+
+
 REQUESTS = Counter(
     "metis_requests_total", "API requests", ["method", "route", "status"]
 )

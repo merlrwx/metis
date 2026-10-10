@@ -78,6 +78,17 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
             extracted = await asyncio.to_thread(
                 ingestion.extract_document, filename, mime_type, data
             )
+            observability.diagnostic_event(
+                "extraction",
+                available=bool(extracted.text.strip()),
+                extracted_characters=len(extracted.text),
+                section_count=len(
+                    extracted.metadata.get(
+                        "sections", extracted.metadata.get("pages", [])
+                    )
+                ),
+                mime_type=mime_type,
+            )
             provider = embeddings.get_embedding_provider()
             text_chunks = chunking.split_document(
                 extracted.text,
@@ -111,6 +122,12 @@ async def run_ingestion_job(job_id: str, organisation_id: str) -> None:
                 raise RuntimeError(
                     "Embedding provider returned the wrong number of vectors"
                 )
+            observability.diagnostic_event(
+                "indexing",
+                available=True,
+                chunk_count=len(text_chunks),
+                model=provider.model_id,
+            )
             observability.PIPELINE_EVENTS.labels("embedding", "success").inc()
             stage = "index"
             with database.SessionLocal() as session:

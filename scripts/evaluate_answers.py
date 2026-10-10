@@ -6,8 +6,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from backend.chat import get_chat_provider
+from backend.evaluation import failure_stage, provider_details
 from backend.services.knowledge import SearchHit
 from backend.services.rag import answer_question
+
+from backend import embeddings
 
 
 def main():
@@ -25,6 +28,7 @@ def main():
     )
     provider = get_chat_provider()
     failures = []
+    embedding = embeddings.get_embedding_provider()
     for case in cases:
         hits = [
             SearchHit(
@@ -55,18 +59,23 @@ def main():
                 for claim in case["claims"]
             )
         )
-        print(
-            json.dumps(
-                {
-                    "case": case["id"],
-                    "passed": passed,
-                    "outcome": result.outcome,
-                    "answer": result.content,
-                    "citations": len(result.citations),
-                }
-            ),
-            flush=True,
-        )
+        row = {
+            "case": case["id"],
+            "passed": passed,
+            "failure_stage": failure_stage(
+                expected_retrieved=True, expected_supplied=True
+            )
+            if not passed
+            else None,
+            "extraction_availability": "synthetic_excerpts_supplied",
+            "index_readiness": "not_required_for_answer_only_evaluation",
+            "reindex_readiness": "not_required_for_answer_only_evaluation",
+            "outcome": result.outcome,
+            "answer": result.content,
+            "citations": len(result.citations),
+            **provider_details(embedding, provider),
+        }
+        print(json.dumps(row), flush=True)
         if not passed:
             failures.append(case["id"])
     if failures:

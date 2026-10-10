@@ -1418,6 +1418,29 @@ def chat_with_knowledge(
         has_evidence = bool(
             rag.supporting_evidence(hits, payload.document_id, document_ids)
         )
+        supplied_evidence = rag.supporting_evidence(
+            hits, payload.document_id, document_ids
+        )
+        supplied_ids = {hit.chunk.id for hit in supplied_evidence}
+        observability.diagnostic_event(
+            "retrieval",
+            embedding_model=embedding_provider.model_id,
+            index_status=session.get(Organisation, organisation_id).index_status,
+            candidates=[
+                {
+                    "rank": rank,
+                    "source_id": str(hit.source.id) if hit.source else None,
+                    "document_id": str(hit.document.id),
+                    "version_id": str(hit.chunk.document_version_id),
+                    "chunk_id": str(hit.chunk.id),
+                    "section": hit.chunk.section,
+                    "score": round(hit.score, 6),
+                    "provenance": "exact" if hit.exact_match else "semantic_or_lexical",
+                    "selected": hit.chunk.id in supplied_ids,
+                }
+                for rank, hit in enumerate(hits, start=1)
+            ],
+        )
         observability.PIPELINE_EVENTS.labels(
             "evidence", "accepted" if has_evidence else "rejected"
         ).inc()
@@ -1435,6 +1458,15 @@ def chat_with_knowledge(
                 chat_provider,
                 document_ids=document_ids,
                 complete_scope=complete_scope,
+            )
+            observability.diagnostic_event(
+                "answer",
+                outcome=grounded.outcome,
+                supplied_evidence_count=len(supplied_evidence),
+                citation_count=len(grounded.citations),
+                chat_model=grounded.completion.model_id
+                if grounded.completion
+                else None,
             )
         except chat.ChatProviderError as error:
             observability.PIPELINE_EVENTS.labels("generation", "failure").inc()
