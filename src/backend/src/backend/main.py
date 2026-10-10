@@ -860,7 +860,7 @@ def get_document_detail(
     organisation_id: UUID,
     document_id: UUID,
     session: Annotated[Session, Depends(get_session)],
-    _: Annotated[OrganisationMembership, Depends(auth.require_membership)],
+    membership: Annotated[OrganisationMembership, Depends(auth.require_membership)],
 ) -> dict:
     from sqlalchemy import func, select
 
@@ -897,6 +897,18 @@ def get_document_detail(
         .limit(51)
     ).all()
     metadata = version.extraction_metadata or {} if version else {}
+    is_admin = membership.role in {"owner", "admin"}
+    extracted_text = version.extracted_text or "" if version else ""
+    warnings = list(metadata.get("warnings", []))
+    if (
+        job
+        and job.status == "failed"
+        and job.error
+        and "Text could not be read" in job.error
+    ):
+        warnings.append(
+            "PDF text extraction found little or no searchable text; OCR is not configured."
+        )
     return {
         "document": document_view(session, document).model_dump(mode="json"),
         "versions": [
@@ -910,10 +922,19 @@ def get_document_detail(
         ],
         "versions_truncated": len(versions) > 50,
         "source_modified_at": document.external_modified_at,
-        "extraction_preview": (version.extracted_text or "")[:4000] if version else "",
-        "preview_truncated": bool(version and len(version.extracted_text or "") > 4000),
+        "extraction_preview": extracted_text[:4000] if is_admin else "",
+        "preview_truncated": bool(is_admin and len(extracted_text) > 4000),
         "page_count": len(metadata.get("pages", [])),
         "chunk_count": chunk_count,
+        "extracted_characters": len(extracted_text) if is_admin else None,
+        "blank_page_count": sum(
+            1
+            for page in metadata.get("pages", [])
+            if page.get("start") == page.get("end")
+        )
+        if is_admin
+        else None,
+        "parsing_warnings": warnings if is_admin else [],
         "last_successful_indexing": metadata.get("last_successful_indexing")
         or (
             job.completed_at if job and job.status in {"indexed", "completed"} else None

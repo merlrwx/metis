@@ -118,6 +118,7 @@ def _with_offsets(
     text_parts = []
     records = []
     offset = 0
+    heading_stack: list[str] = []
     for title, level, content in parts:
         normalized = normalize_text(content)
         if not normalized:
@@ -131,7 +132,14 @@ def _with_offsets(
             raise DocumentTooLarge(
                 "Extracted text exceeds 2 million characters; split the document"
             )
-        records.append({"title": title, "level": level, "start": start, "end": offset})
+        record = {"title": title, "level": level, "start": start, "end": offset}
+        if title and level is not None:
+            heading_stack[:] = heading_stack[: level - 1]
+            heading_stack.append(title)
+            record["heading_path"] = list(heading_stack)
+        elif heading_stack:
+            record["heading_path"] = list(heading_stack)
+        records.append(record)
     return "\n\n".join(text_parts), records
 
 

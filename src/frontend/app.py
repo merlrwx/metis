@@ -715,6 +715,13 @@ def render_document_detail(organisation_id: str, token: str, role: str) -> None:
             st.caption(detail["readiness"])
             st.write(f"Status: {status_label(document['ingestion_status'])}")
             st.write(f"Pages: {detail['page_count']} · Chunks: {detail['chunk_count']}")
+            if role in {"owner", "admin"}:
+                st.caption(
+                    f"Extracted characters: {detail.get('extracted_characters', 0)} · "
+                    f"Blank pages: {detail.get('blank_page_count', 0)}"
+                )
+                for warning in detail.get("parsing_warnings", []):
+                    st.warning(warning)
             st.caption(
                 f"Source: {document['source_id']} · Version: {document['current_version_id']}"
             )
@@ -730,11 +737,13 @@ def render_document_detail(organisation_id: str, token: str, role: str) -> None:
                 )
                 if detail.get("versions_truncated"):
                     st.caption("Showing the latest 50 stored versions.")
-            st.text(
-                detail["extraction_preview"] or "No extracted text is available yet."
-            )
-            if detail["preview_truncated"]:
-                st.caption("Preview shows the first 4,000 characters.")
+            if role in {"owner", "admin"}:
+                st.text(
+                    detail["extraction_preview"]
+                    or "No extracted text is available yet."
+                )
+                if detail["preview_truncated"]:
+                    st.caption("Preview shows the first 4,000 characters.")
             if role in {"owner", "admin"}:
                 with st.form(f"replace_document_{document_id}"):
                     replacement = st.file_uploader(
