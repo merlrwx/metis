@@ -1,0 +1,27 @@
+services:
+  llm:
+    image: ollama/ollama:latest
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: [CMD, ollama, list]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  backend:
+    environment:
+      GPTMOCK_BASE_URL: http://llm:11434/v1
+      GPTMOCK_API_KEY: ollama-local
+      GPTMOCK_MODEL: ${LOCAL_LLM_MODEL:-smollm2:135m}
+      GPTMOCK_TIMEOUT: ${LOCAL_LLM_TIMEOUT:-30}
+      GPTMOCK_MAX_RETRIES: ${LOCAL_LLM_MAX_RETRIES:-0}
+    depends_on:
+      llm:
+        condition: service_healthy
+
+volumes:
+  ollama-models:
