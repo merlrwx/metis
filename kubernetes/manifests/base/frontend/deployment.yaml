@@ -27,6 +27,11 @@ spec:
           env:
             - name: BACKEND_URL
               value: "http://backend:22112"
+            - name: METIS_SESSION_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: metis-runtime
+                  key: METIS_SESSION_COOKIE_SECRET
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Metis session</title>
+  </head>
+  <body>
+    <script>
+      const cookieName = "metis_session";
+      let lastCommandId = null;
+
+      function readCookie() {
+        const prefix = `${cookieName}=`;
+        const cookie = document.cookie
+          .split(";")
+          .map((part) => part.trim())
+          .find((part) => part.startsWith(prefix));
+        if (!cookie) return "";
+        try {
+          return decodeURIComponent(cookie.slice(prefix.length));
+        } catch {
+          return "";
+        }
+      }
+
+      function writeCookie(command) {
+        if (!command || command.id === lastCommandId) return;
+        lastCommandId = command.id;
+        const secure = window.location.protocol === "https:" ? "; Secure" : "";
+        if (command.action === "set") {
+          document.cookie = `${cookieName}=${encodeURIComponent(command.value)}; Path=/; SameSite=Lax${secure}`;
+        } else if (command.action === "delete") {
+          document.cookie = `${cookieName}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+        }
+      }
+
+      window.addEventListener("message", (event) => {
+        if (event.data?.type !== "streamlit:render") return;
+        const { args } = event.data;
+        writeCookie(args.command);
+        window.parent.postMessage(
+          {
+            isStreamlitMessage: true,
+            type: "streamlit:setComponentValue",
+            dataType: "json",
+            value: readCookie(),
+          },
+          "*",
+        );
+      });
+
+      window.parent.postMessage(
+        {
+          isStreamlitMessage: true,
+          type: "streamlit:componentReady",
+          apiVersion: 1,
+        },
+        "*",
+      );
+    </script>
+  </body>
+</html>

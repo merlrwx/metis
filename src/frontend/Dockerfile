@@ -29,6 +29,7 @@ RUN addgroup -S -g 1000 app && adduser -S -u 1000 -G app app
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 COPY --chown=app:app app.py /app/app.py
 COPY --chown=app:app api_client.py /app/api_client.py
+COPY --chown=app:app cookie_component /app/cookie_component
 
 # Run the application
 WORKDIR /app

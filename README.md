@@ -24,6 +24,7 @@ docker compose up -d database redis
 DATABASE_URL=postgresql+psycopg://metis:metis-local-only@localhost:5432/metis \
   uv run --locked --project src/backend alembic -c src/backend/alembic.ini upgrade head
 export METIS_AUTH_SECRET_KEY="$(openssl rand -hex 32)"
+export METIS_SESSION_COOKIE_SECRET="$(openssl rand -hex 32)"
 export METIS_BOOTSTRAP_TOKEN="$(openssl rand -hex 32)"
 DATABASE_URL=postgresql+psycopg://metis:metis-local-only@localhost:5432/metis \
 REDIS_URL=redis://localhost:6379/0 \
@@ -35,7 +36,7 @@ EMBEDDING_PROVIDER=hashing \
 uv run --locked --project src/backend metis-worker
 ```
 
-Set `METIS_AUTH_SECRET_KEY` to a unique random value of at least 32 characters before starting the API. Set `METIS_BOOTSTRAP_TOKEN` to a separate random value; it is only used to claim existing organisations that have no members. Compose supplies local-only defaults, which must be replaced for any shared deployment.
+Set `METIS_AUTH_SECRET_KEY` to a unique random value of at least 32 characters before starting the API. Set `METIS_SESSION_COOKIE_SECRET` to a separate random value before starting the frontend; it encrypts the browser cookie that keeps your sign-in across page refreshes. Set `METIS_BOOTSTRAP_TOKEN` to another random value; it is only used to claim existing organisations that have no members. Compose supplies local-only defaults, which must be replaced for any shared deployment.
 
 Run Streamlit in another terminal with `uv run --locked --project src/frontend streamlit run src/frontend/app.py`. The API is on port 8000 (`/docs` for OpenAPI), and Streamlit is on port 8501. Set `BACKEND_URL` if the API runs elsewhere. DevPod forwards these ports. The UI supports registration and sign-in, organisation selection, document upload and status, source management, cited chat, and member settings. You can use its Create account flow and create an organisation after signing in, or use the API directly:
 

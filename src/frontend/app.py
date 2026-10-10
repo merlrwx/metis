@@ -1,14 +1,33 @@
 import os
+import secrets
+from base64 import urlsafe_b64encode
+from hashlib import sha256
+from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
 
 import streamlit as st
+import streamlit.components.v1 as components
 from api_client import ApiError, MetisApi
+from cryptography.fernet import Fernet, InvalidToken
 
 backend_url = os.environ.get("BACKEND_URL", "http://localhost:8000").rstrip("/")
 api = MetisApi(backend_url)
-
 st.set_page_config(page_title="Metis", page_icon="M", layout="wide")
+
+
+cookie_component = components.declare_component(
+    "metis_session_cookie", path=str(Path(__file__).parent / "cookie_component")
+)
+
+
+@st.cache_resource
+def session_cookie_cipher() -> Fernet:
+    secret = os.environ.get("METIS_SESSION_COOKIE_SECRET") or secrets.token_urlsafe(32)
+    key = urlsafe_b64encode(sha256(secret.encode()).digest())
+    return Fernet(key)
+
+
 st.markdown(
     """
     <style>
@@ -24,13 +43,26 @@ st.markdown(
     [data-testid="stAppViewContainer"] { background: var(--metis-bg); color: var(--metis-ink); }
     [data-testid="stSidebar"] { background: var(--metis-sidebar); border-right: 1px solid var(--metis-border); }
     [data-testid="stHeader"] { background: transparent; }
-    .main .block-container { max-width: 1280px; padding-top: 2rem; padding-bottom: 3rem; }
+    .main .block-container { max-width: 1280px; padding: 2rem 2rem 3rem; }
     h1, h2, h3 { color: var(--metis-ink); letter-spacing: -0.02em; }
     h1 { font-size: 2rem; font-weight: 650; }
     h2 { font-size: 1.45rem; font-weight: 620; }
     h3 { font-size: 1.1rem; font-weight: 600; }
     p, label, [data-testid="stCaptionContainer"] { color: var(--metis-ink); }
     [data-testid="stMarkdownContainer"] a { color: var(--metis-primary); }
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color: var(--metis-muted); }
+    [data-testid="stTextInput"] input,
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stSelectbox"] [role="combobox"],
+    [data-testid="stMultiSelect"] [role="combobox"] {
+      border-color: var(--metis-border); border-radius: 0.4rem;
+    }
+    [data-testid="stTextInput"] input:focus,
+    [data-testid="stTextArea"] textarea:focus,
+    [data-testid="stSelectbox"] [role="combobox"]:focus,
+    [data-testid="stMultiSelect"] [role="combobox"]:focus {
+      border-color: var(--metis-primary); box-shadow: 0 0 0 1px var(--metis-primary);
+    }
     div[data-testid="stButton"] > button,
     div[data-testid="stFormSubmitButton"] > button {
       min-height: 2.75rem; border-radius: 0.4rem; border: 1px solid var(--metis-border);
@@ -42,6 +74,10 @@ st.markdown(
     div[data-testid="stFormSubmitButton"] > button:focus-visible { outline: 3px solid var(--metis-accent); outline-offset: 2px; }
     button[kind="primary"] { background: var(--metis-primary); border-color: var(--metis-primary); color: white; }
     [data-testid="stFileUploader"] { border-radius: 0.4rem; }
+    @media (max-width: 700px) {
+      .main .block-container { padding: 1.25rem 1rem 2rem; }
+      [data-testid="stSidebar"] { min-width: 15rem; }
+    }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
     }
@@ -52,6 +88,10 @@ st.markdown(
 
 
 def clear_session() -> None:
+    st.session_state["_metis_cookie_command"] = {
+        "id": str(uuid4()),
+        "action": "delete",
+    }
     for key in (
         "metis_token",
         "metis_user",
@@ -79,6 +119,37 @@ def show_notice() -> None:
         st.success(message)
 
 
+def read_saved_token() -> str | None:
+    command = st.session_state.get("_metis_cookie_command")
+    encrypted_token = cookie_component(
+        command=command,
+        key="metis_session_cookie",
+        height=1,
+        default="",
+    )
+    if command:
+        st.session_state.pop("_metis_cookie_command", None)
+    if not encrypted_token:
+        return None
+    try:
+        return session_cookie_cipher().decrypt(encrypted_token.encode()).decode()
+    except (InvalidToken, UnicodeDecodeError, ValueError):
+        st.session_state["_metis_cookie_command"] = {
+            "id": str(uuid4()),
+            "action": "delete",
+        }
+        return None
+
+
+def persist_token(token: str) -> None:
+    encrypted_token = session_cookie_cipher().encrypt(token.encode()).decode()
+    st.session_state["_metis_cookie_command"] = {
+        "id": str(uuid4()),
+        "action": "set",
+        "value": encrypted_token,
+    }
+
+
 def rerun_with_notice(message: str) -> None:
     st.session_state["metis_notice"] = message
     st.rerun()
@@ -86,7 +157,7 @@ def rerun_with_notice(message: str) -> None:
 
 def render_login() -> None:
     st.title("Metis")
-    st.write("Find answers in your organisation’s policies and procedures.")
+    st.write("Find clear answers in your organisation’s policies and procedures.")
     try:
         info = api.request("GET", "/api/info")
         if (
@@ -109,7 +180,9 @@ def render_login() -> None:
             submitted = st.form_submit_button("Sign in", type="primary")
         if submitted:
             try:
-                st.session_state["metis_token"] = api.login(email, password)
+                token = api.login(email, password)
+                st.session_state["metis_token"] = token
+                persist_token(token)
                 st.rerun()
             except (ApiError, KeyError) as error:
                 show_api_error(
@@ -130,9 +203,9 @@ def render_login() -> None:
             if register_submitted:
                 try:
                     api.register(register_email, name, register_password)
-                    st.session_state["metis_token"] = api.login(
-                        register_email, register_password
-                    )
+                    token = api.login(register_email, register_password)
+                    st.session_state["metis_token"] = token
+                    persist_token(token)
                     st.rerun()
                 except ApiError as error:
                     show_api_error(error)
@@ -190,6 +263,7 @@ def document_rows(documents: list[dict]) -> list[dict[str, str]]:
 
 def render_dashboard(organisation_id: str, token: str, documents: list[dict]) -> None:
     st.title("Dashboard")
+    st.caption("A quick view of your organisation’s indexed knowledge.")
     total = len(documents)
     processing = sum(
         document.get("ingestion_status") in {"pending", "queued", "processing"}
@@ -260,6 +334,9 @@ def render_knowledge(
     organisation_id: str, token: str, role: str, documents: list[dict]
 ) -> None:
     st.title("Knowledge")
+    st.caption(
+        "Manage sources and documents used to answer your organisation’s questions."
+    )
     sources = request_json(
         "GET", f"/api/organisations/{organisation_id}/sources", token
     )
@@ -803,6 +880,7 @@ def render_citations(
 
 def render_chat(organisation_id: str, token: str) -> None:
     st.title("Chat")
+    st.caption("Ask a question and review the documents behind each answer.")
     if st.session_state.get("metis_chat_org") != organisation_id:
         st.session_state["metis_chat_org"] = organisation_id
         st.session_state.pop("metis_pending_chat", None)
@@ -1124,6 +1202,7 @@ def render_chat(organisation_id: str, token: str) -> None:
 
 def render_settings(organisation: dict, role: str, token: str) -> None:
     st.title("Settings")
+    st.caption("Manage access to this organisation’s knowledge.")
     st.subheader("Organisation")
     st.write(organisation["name"])
     st.caption(f"Organisation ID · {organisation['id']}")
@@ -1170,6 +1249,11 @@ def render_settings(organisation: dict, role: str, token: str) -> None:
 def main() -> None:
     show_notice()
     token = st.session_state.get("metis_token")
+    saved_token = read_saved_token()
+    if not token:
+        token = saved_token
+        if token:
+            st.session_state["metis_token"] = token
     if not token:
         render_login()
         return

@@ -108,6 +108,7 @@ services:
         condition: service_healthy
     environment:
       BACKEND_URL: http://backend:8000
+      METIS_SESSION_COOKIE_SECRET: ${METIS_SESSION_COOKIE_SECRET:-metis-local-cookie-secret-change-before-use}
     ports:
       - "8501:8501"
 
