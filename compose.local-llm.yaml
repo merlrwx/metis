@@ -5,6 +5,8 @@ services:
       - "127.0.0.1:11434:11434"
     volumes:
       - ollama-models:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h
     healthcheck:
       test: [CMD, ollama, list]
       interval: 10s
@@ -16,7 +18,7 @@ services:
     environment:
       GPTMOCK_BASE_URL: http://llm:11434/v1
       GPTMOCK_API_KEY: ollama-local
-      GPTMOCK_MODEL: ${LOCAL_LLM_MODEL:-smollm2:135m}
+      GPTMOCK_MODEL: ${LOCAL_LLM_MODEL:-metis-qwen25:3b}
       GPTMOCK_TIMEOUT: ${LOCAL_LLM_TIMEOUT:-30}
       GPTMOCK_MAX_RETRIES: ${LOCAL_LLM_MAX_RETRIES:-0}
     depends_on:
