@@ -227,9 +227,11 @@ def answer_question(
             break
         except (ValueError, ValidationError) as error:
             if attempt:
+                observability.ANSWER_FAILURES.labels("malformed_output").inc()
                 raise AnswerFormatError(
                     "Chat provider answer format remained invalid after one repair"
                 ) from error
+            observability.RAG_REPAIRS.inc()
             messages = [
                 *messages,
                 ("assistant", completion.content),

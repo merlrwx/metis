@@ -10,6 +10,13 @@ parsing. Malformed JSON, missing fields and invalid citation markers get one
 bounded repair attempt. Exhausted repairs are format errors, request failures are
 provider errors, and ungrounded answers become missing-evidence outcomes.
 
+Prometheus exposes answer outcomes and bounded failure categories for embedding
+failure, zero retrieval hits, rejected evidence, provider failure, malformed output
+and unsupported answers. Retrieval candidate counts and top relevance scores support
+quality triage; they are not probabilities or substitutes for fixture evaluation.
+Format repairs and model/retrieval latency are measured separately. These metrics
+contain no source text or tenant identifiers.
+
 Answers use only the current retrieved evidence. The prompt asks for both sides of
 comparisons and conflicts, specific clarification when period/net/gross/authority
 matters, and no invented explanations for differences. External modification time

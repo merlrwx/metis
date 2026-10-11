@@ -98,7 +98,9 @@ Production metadata tracing is disabled by default. Set
 `METIS_DIAGNOSTICS_ENABLED=true` for restricted diagnostic runs to emit extraction
 availability, candidate rank/score/provenance, selected evidence and outcome metadata.
 Trace events contain identifiers and section labels, never question or source snippets;
-limit access to the application diagnostic logs.
+limit access to the application diagnostic logs and apply the deployment's short log
+retention policy. Disable the flag when the diagnostic run ends. Normal production
+metrics have bounded operation labels, with no tenant IDs, document IDs or prompts.
 
 Provision and migrate an isolated PostgreSQL database first. The evaluation creates only unique synthetic organisations, stores originals in a temporary directory, runs the actual ingestion function, retrieves from PostgreSQL and removes its own data afterward.
 

@@ -1404,6 +1404,7 @@ def chat_with_knowledge(
         except embeddings.InvalidEmbeddingInput as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         except (RuntimeError, OSError, TypeError, ValueError) as error:
+            observability.ANSWER_FAILURES.labels("embedding_failure").inc()
             observability.PIPELINE_EVENTS.labels("embedding", "failure").inc()
             raise HTTPException(
                 status_code=503, detail="Embedding provider is unavailable"
@@ -1419,6 +1420,10 @@ def chat_with_knowledge(
             document_ids=document_ids,
             expand_neighbors=True,
             query_text=retrieval_query,
+        )
+        observability.RETRIEVAL_HITS.observe(len(hits))
+        observability.RETRIEVAL_QUALITY.observe(
+            max((hit.score for hit in hits), default=0)
         )
         observability.PIPELINE_EVENTS.labels(
             "retrieval", "success" if hits else "empty"
@@ -1464,6 +1469,10 @@ def chat_with_knowledge(
         observability.PIPELINE_EVENTS.labels(
             "evidence", "accepted" if has_evidence else "rejected"
         ).inc()
+        if not hits:
+            observability.ANSWER_FAILURES.labels("zero_hits").inc()
+        elif not has_evidence:
+            observability.ANSWER_FAILURES.labels("evidence_rejected").inc()
         try:
             chat_provider = (
                 chat.get_chat_provider()
@@ -1488,7 +1497,13 @@ def chat_with_knowledge(
                 if grounded.completion
                 else None,
             )
+        except chat.AnswerFormatError as error:
+            observability.PIPELINE_EVENTS.labels("generation", "malformed_output").inc()
+            raise HTTPException(
+                status_code=502, detail="Chat provider returned an invalid answer"
+            ) from error
         except chat.ChatProviderError as error:
+            observability.ANSWER_FAILURES.labels("provider_failure").inc()
             observability.PIPELINE_EVENTS.labels("generation", "failure").inc()
             raise HTTPException(
                 status_code=503, detail="Chat provider is unavailable"
@@ -1571,6 +1586,8 @@ def chat_with_knowledge(
         },
     )
     observability.ANSWER_OUTCOMES.labels(grounded.outcome).inc()
+    if grounded.outcome == "insufficient_evidence" and has_evidence:
+        observability.ANSWER_FAILURES.labels("unsupported_answer").inc()
     response = ChatResponse(
         message_id=session.scalar(
             select(Message.id)
