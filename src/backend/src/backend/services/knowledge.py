@@ -2,6 +2,7 @@ import os
 import re
 import uuid
 from dataclasses import dataclass
+from typing import Protocol
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -19,6 +20,12 @@ class SearchHit:
     exact_match: bool = False
     provenance: frozenset[str] = frozenset()
     rank_score: float = 0.0
+
+
+class Reranker(Protocol):
+    """Optional ranking provider; callers must explicitly opt in."""
+
+    def rerank(self, query: str, hits: list[SearchHit]) -> list[SearchHit]: ...
 
 
 def retrieval_settings() -> tuple[int, int, float, int]:
@@ -240,6 +247,7 @@ def search_chunks(
     document_ids: list[uuid.UUID] | None = None,
     expand_neighbors: bool = False,
     query_text: str | None = None,
+    reranker: Reranker | None = None,
 ) -> list[SearchHit]:
     candidate_count, default_evidence_count, _, token_budget = retrieval_settings()
     evidence_limit = (
@@ -350,6 +358,16 @@ def search_chunks(
             for chunk, document, source, distance_value in lexical_rows
         ]
         candidates = fuse_rankings(candidates, lexical)
+    if reranker is not None and query_text:
+        reranked = reranker.rerank(query_text, candidates[:40])
+        candidate_ids = {hit.chunk.id for hit in candidates}
+        if any(hit.chunk.id not in candidate_ids for hit in reranked):
+            raise ValueError("Reranker returned a chunk outside the candidate set")
+        candidates = reranked + [
+            hit
+            for hit in candidates
+            if hit.chunk.id not in {x.chunk.id for x in reranked}
+        ]
     selected = select_evidence(
         candidates,
         evidence_limit,

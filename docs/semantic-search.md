@@ -17,6 +17,30 @@ The selected pinned model also passed actual extraction/ingestion and PostgreSQL
 
 These are small, warm, sequential synthetic measurements, not capacity or comprehensive quality claims. MiniLM has a 256-token input limit; extraction/chunk evaluation must account for truncation when adding larger or denser documents. Semantic ingestion now uses the pinned model tokenizer and limits chunks to 254 content tokens plus two special tokens; character offsets and full text coverage are preserved. Embedding requests contain at most 64 chunks.
 
+### Comparing embedding models and reranking
+
+`mise run benchmark-embeddings` runs an opt-in exact-cosine comparison against the
+annotated synthetic passages and direct/paraphrased questions. It reports evidence
+Recall@5/10, reciprocal-rank answer-quality proxy, evidence precision, query latency,
+peak process memory, and direct/paraphrase category results. It measures embeddings
+through the configured OpenAI-compatible endpoint and does not alter application
+defaults. The default candidate IDs are the pinned MiniLM, `BAAI/bge-small-en-v1.5`,
+and `intfloat/e5-small-v2`; set `METIS_BENCHMARK_MODELS` to a JSON string array and
+`EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, and `EMBEDDING_DIMENSIONS` for the service.
+The pinned single-model
+runtime accepts only MiniLM, so comparison requires a compatible endpoint that exposes
+each candidate ID, or configure one model at a time. Unavailable models are recorded
+with their exact endpoint/dependency error; at least one model must complete. The report
+defaults to ignored `.agent/embedding-benchmark.json`.
+
+Optional reranking uses `METIS_RERANKER_BASE_URL`, `METIS_RERANKER_MODEL`, and optional
+`METIS_RERANKER_API_KEY` for a Jina-compatible `/rerank` endpoint. It reranks at most
+the top 40 candidates and reports the same retrieval metrics including reranking
+latency. No endpoint means no reranking. Application retrieval exposes an injected
+Python `Reranker` seam, and only callers that explicitly pass one activate it. This
+fixture benchmark measures evidence ranking as an answer-quality proxy; use the
+existing answer/pipeline evaluations before adopting a model or reranker.
+
 ## Start in DevPod
 
 Keep the existing ChatMock and UI/API tunnels active. From `/workspaces/metis`:

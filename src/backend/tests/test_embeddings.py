@@ -3,6 +3,8 @@ import json
 import math
 
 import pytest
+from backend.reranking import JinaReranker
+from backend.services.knowledge import SearchHit
 
 from backend import embeddings
 
@@ -123,3 +125,44 @@ def test_semantic_provider_accepts_configured_dimensions_and_rejects_mismatch(
     )
     with pytest.raises(RuntimeError, match="384 finite values"):
         provider.embed_query("synthetic")
+
+
+def test_reranker_sorts_candidates_by_provider_result(monkeypatch):
+    first = SearchHit(
+        chunk=type("Chunk", (), {"content": "first"})(),
+        document=None,
+        source=None,
+        score=0.5,
+    )
+    second = SearchHit(
+        chunk=type("Chunk", (), {"content": "second"})(),
+        document=None,
+        source=None,
+        score=0.4,
+    )
+    monkeypatch.setattr(
+        "backend.reranking.urlopen",
+        lambda request, timeout: io.BytesIO(
+            json.dumps({"results": [{"index": 1}, {"index": 0}]}).encode()
+        ),
+    )
+    assert JinaReranker("http://rerank.test", "test-model").rerank(
+        "query", [first, second]
+    ) == [second, first]
+
+
+def test_reranker_rejects_out_of_range_indexes(monkeypatch):
+    hit = SearchHit(
+        chunk=type("Chunk", (), {"content": "first"})(),
+        document=None,
+        source=None,
+        score=0.5,
+    )
+    monkeypatch.setattr(
+        "backend.reranking.urlopen",
+        lambda request, timeout: io.BytesIO(
+            json.dumps({"results": [{"index": 2}]}).encode()
+        ),
+    )
+    with pytest.raises(RuntimeError, match="invalid result indexes"):
+        JinaReranker("http://rerank.test", "test-model").rerank("query", [hit])
