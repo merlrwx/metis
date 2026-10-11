@@ -860,7 +860,7 @@ def get_document_detail(
     organisation_id: UUID,
     document_id: UUID,
     session: Annotated[Session, Depends(get_session)],
-    _: Annotated[OrganisationMembership, Depends(auth.require_membership)],
+    membership: Annotated[OrganisationMembership, Depends(auth.require_membership)],
 ) -> dict:
     from sqlalchemy import func, select
 
@@ -897,6 +897,18 @@ def get_document_detail(
         .limit(51)
     ).all()
     metadata = version.extraction_metadata or {} if version else {}
+    is_admin = membership.role in {"owner", "admin"}
+    extracted_text = version.extracted_text or "" if version else ""
+    warnings = list(metadata.get("warnings", []))
+    if (
+        job
+        and job.status == "failed"
+        and job.error
+        and "Text could not be read" in job.error
+    ):
+        warnings.append(
+            "PDF text extraction found little or no searchable text; OCR is not configured."
+        )
     return {
         "document": document_view(session, document).model_dump(mode="json"),
         "versions": [
@@ -910,10 +922,19 @@ def get_document_detail(
         ],
         "versions_truncated": len(versions) > 50,
         "source_modified_at": document.external_modified_at,
-        "extraction_preview": (version.extracted_text or "")[:4000] if version else "",
-        "preview_truncated": bool(version and len(version.extracted_text or "") > 4000),
+        "extraction_preview": extracted_text[:4000] if is_admin else "",
+        "preview_truncated": bool(is_admin and len(extracted_text) > 4000),
         "page_count": len(metadata.get("pages", [])),
         "chunk_count": chunk_count,
+        "extracted_characters": len(extracted_text) if is_admin else None,
+        "blank_page_count": sum(
+            1
+            for page in metadata.get("pages", [])
+            if page.get("start") == page.get("end")
+        )
+        if is_admin
+        else None,
+        "parsing_warnings": warnings if is_admin else [],
         "last_successful_indexing": metadata.get("last_successful_indexing")
         or (
             job.completed_at if job and job.status in {"indexed", "completed"} else None
@@ -1334,6 +1355,18 @@ def chat_with_knowledge(
         response.citations = conversations.refresh_citation_sources(
             session, organisation_id, response.citations
         )
+        if not conversations.citations_available(
+            session,
+            organisation_id,
+            [passage.model_dump(mode="json") for passage in response.related_passages],
+            source_ids,
+            document_ids,
+        ):
+            response.related_passages = []
+        else:
+            response.related_passages = conversations.refresh_citation_sources(
+                session, organisation_id, response.related_passages
+            )
         return response
     request_limits.enforce(organisation_id, actor.user_id, "chat")
     history = (
@@ -1348,7 +1381,15 @@ def chat_with_knowledge(
         if conversation is not None
         else []
     )
-    retrieval_query = followups.rewrite(payload.message, history)
+    rewrite_provider = None
+    if followups.needs_model_rewrite(payload.message):
+        try:
+            rewrite_provider = chat.get_chat_provider()
+        except chat.ChatProviderError:
+            # Rewriting is optional; deterministic fallback remains available.
+            pass
+    retrieval_query = followups.resolve(payload.message, history, rewrite_provider)
+    hits = []
     if retrieval_query is None:
         grounded = rag.GroundedAnswer(
             "Which document, topic or pay period does your follow-up refer to?",
@@ -1363,6 +1404,7 @@ def chat_with_knowledge(
         except embeddings.InvalidEmbeddingInput as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         except (RuntimeError, OSError, TypeError, ValueError) as error:
+            observability.ANSWER_FAILURES.labels("embedding_failure").inc()
             observability.PIPELINE_EVENTS.labels("embedding", "failure").inc()
             raise HTTPException(
                 status_code=503, detail="Embedding provider is unavailable"
@@ -1378,6 +1420,10 @@ def chat_with_knowledge(
             document_ids=document_ids,
             expand_neighbors=True,
             query_text=retrieval_query,
+        )
+        observability.RETRIEVAL_HITS.observe(len(hits))
+        observability.RETRIEVAL_QUALITY.observe(
+            max((hit.score for hit in hits), default=0)
         )
         observability.PIPELINE_EVENTS.labels(
             "retrieval", "success" if hits else "empty"
@@ -1397,9 +1443,36 @@ def chat_with_knowledge(
         has_evidence = bool(
             rag.supporting_evidence(hits, payload.document_id, document_ids)
         )
+        supplied_evidence = rag.supporting_evidence(
+            hits, payload.document_id, document_ids
+        )
+        supplied_ids = {hit.chunk.id for hit in supplied_evidence}
+        observability.diagnostic_event(
+            "retrieval",
+            embedding_model=embedding_provider.model_id,
+            index_status=session.get(Organisation, organisation_id).index_status,
+            candidates=[
+                {
+                    "rank": rank,
+                    "source_id": str(hit.source.id) if hit.source else None,
+                    "document_id": str(hit.document.id),
+                    "version_id": str(hit.chunk.document_version_id),
+                    "chunk_id": str(hit.chunk.id),
+                    "section": hit.chunk.section,
+                    "score": round(hit.score, 6),
+                    "provenance": knowledge.provenance_label(hit),
+                    "selected": hit.chunk.id in supplied_ids,
+                }
+                for rank, hit in enumerate(hits, start=1)
+            ],
+        )
         observability.PIPELINE_EVENTS.labels(
             "evidence", "accepted" if has_evidence else "rejected"
         ).inc()
+        if not hits:
+            observability.ANSWER_FAILURES.labels("zero_hits").inc()
+        elif not has_evidence:
+            observability.ANSWER_FAILURES.labels("evidence_rejected").inc()
         try:
             chat_provider = (
                 chat.get_chat_provider()
@@ -1415,13 +1488,32 @@ def chat_with_knowledge(
                 document_ids=document_ids,
                 complete_scope=complete_scope,
             )
+            observability.diagnostic_event(
+                "answer",
+                outcome=grounded.outcome,
+                supplied_evidence_count=len(supplied_evidence),
+                citation_count=len(grounded.citations),
+                chat_model=grounded.completion.model_id
+                if grounded.completion
+                else None,
+            )
+        except chat.AnswerFormatError as error:
+            observability.PIPELINE_EVENTS.labels("generation", "malformed_output").inc()
+            raise HTTPException(
+                status_code=502, detail="Chat provider returned an invalid answer"
+            ) from error
         except chat.ChatProviderError as error:
+            observability.ANSWER_FAILURES.labels("provider_failure").inc()
             observability.PIPELINE_EVENTS.labels("generation", "failure").inc()
             raise HTTPException(
                 status_code=503, detail="Chat provider is unavailable"
             ) from error
 
-    citations = [citation_view(hit) for hit in grounded.citations]
+    citations = conversations.refresh_citation_sources(
+        session,
+        organisation_id,
+        [citation_view(hit) for hit in grounded.citations],
+    )
     if not conversations.citations_available(
         session,
         organisation_id,
@@ -1436,6 +1528,27 @@ def chat_with_knowledge(
             "insufficient_evidence",
         )
         citations = []
+    cited_chunk_ids = {citation.chunk_id for citation in citations}
+    related_passages = (
+        [citation_view(hit) for hit in hits if hit.chunk.id not in cited_chunk_ids][
+            : payload.top_k
+        ]
+        if grounded.outcome == "partially_answered"
+        else []
+    )
+    related_passages = conversations.refresh_citation_sources(
+        session,
+        organisation_id,
+        related_passages,
+    )
+    if not conversations.citations_available(
+        session,
+        organisation_id,
+        [passage.model_dump(mode="json") for passage in related_passages],
+        source_ids,
+        document_ids,
+    ):
+        related_passages = []
     completion = grounded.completion
     try:
         conversations.save_turn(
@@ -1473,6 +1586,8 @@ def chat_with_knowledge(
         },
     )
     observability.ANSWER_OUTCOMES.labels(grounded.outcome).inc()
+    if grounded.outcome == "insufficient_evidence" and has_evidence:
+        observability.ANSWER_FAILURES.labels("unsupported_answer").inc()
     response = ChatResponse(
         message_id=session.scalar(
             select(Message.id)
@@ -1488,6 +1603,7 @@ def chat_with_knowledge(
         answer=grounded.content,
         outcome=grounded.outcome,
         citations=citations,
+        related_passages=related_passages,
         model_id=completion.model_id if completion else None,
         usage=ChatUsageView(
             input_tokens=completion.input_tokens if completion else None,

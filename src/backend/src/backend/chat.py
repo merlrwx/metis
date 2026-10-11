@@ -1,8 +1,11 @@
+import logging
 import os
 from dataclasses import dataclass
 from typing import Protocol
 
 from langchain_openai import ChatOpenAI
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -21,6 +24,10 @@ class ChatProvider(Protocol):
 
 class ChatProviderError(RuntimeError):
     pass
+
+
+class AnswerFormatError(ChatProviderError):
+    """The provider responded, but its answer could not be validated."""
 
 
 class LangChainOpenAICompatibleProvider:
@@ -46,6 +53,52 @@ class LangChainOpenAICompatibleProvider:
         )
 
     def generate(self, messages: list[tuple[str, str]]) -> ChatCompletion:
+        return self._generate(messages)
+
+    def generate_structured(self, messages: list[tuple[str, str]]) -> ChatCompletion:
+        """Prefer provider native JSON schema, with JSON mode/plain invoke fallback."""
+        try:
+            structured = self.client.with_structured_output(
+                schema={
+                    "title": "GroundedAnswer",
+                    "type": "object",
+                    "properties": {
+                        "outcome": {
+                            "type": "string",
+                            "enum": [
+                                "answered",
+                                "partially_answered",
+                                "clarification_needed",
+                                "insufficient_evidence",
+                            ],
+                        },
+                        "answer": {"type": "string"},
+                        "calculation": {"type": ["object", "null"]},
+                    },
+                    "required": ["outcome", "answer"],
+                    "additionalProperties": False,
+                },
+                method="json_schema",
+            )
+            response = structured.invoke(messages)
+            if isinstance(response, dict):
+                import json
+
+                return self._completion(json.dumps(response))
+        except Exception as error:  # noqa: BLE001 - server capability varies by endpoint
+            # Some local OpenAI-compatible servers do not implement json_schema.
+            logger.debug("Provider JSON schema mode unavailable: %s", error)
+        try:
+            response = self.client.bind(response_format={"type": "json_object"}).invoke(
+                messages
+            )
+            if isinstance(response.content, str):
+                return self._completion(response.content, response)
+        except Exception as error:  # noqa: BLE001 - server capability varies by endpoint
+            logger.debug("Provider JSON object mode unavailable: %s", error)
+        return self._generate(messages)
+
+    def _generate(self, messages: list[tuple[str, str]]) -> ChatCompletion:
         try:
             response = self.client.invoke(messages)
         except Exception as error:
@@ -54,10 +107,17 @@ class LangChainOpenAICompatibleProvider:
         content = response.content
         if not isinstance(content, str):
             raise ChatProviderError("Chat provider returned non-text content")
-        usage = response.usage_metadata or {}
+        return self._completion(content, response)
+
+    def _completion(self, content: str, response=None) -> ChatCompletion:
+        usage = (getattr(response, "usage_metadata", None) or {}) if response else {}
         if not isinstance(usage, dict):
             usage = {}
-        response_usage = response.response_metadata.get("token_usage", {})
+        response_usage = (
+            getattr(response, "response_metadata", {}).get("token_usage", {})
+            if response
+            else {}
+        )
         if not isinstance(response_usage, dict):
             response_usage = {}
 

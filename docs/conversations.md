@@ -11,13 +11,14 @@ make an explicit selection; invalid/deleted IDs never silently become all knowle
 Unavailable selections remain visible in the UI until the user removes them.
 A deleted group must be replaced explicitly. Group membership is resolved freshly.
 
-Follow-up retrieval performs one deterministic, bounded rewrite from recent user
-questions. Standalone questions remain unchanged. “What about last month?” can derive
-the previous month from a month/year explicitly stated in the earlier user question.
-The rewrite never imports assistant assertions or modifies authorised scope. If no
-context is available, Metis asks which topic/period the question refers to. The
-original question is still saved and answered. No LangGraph or additional LLM call
-is required for this flow.
+Follow-up retrieval first performs a deterministic rewrite from recent user
+questions. “What about last month?” can derive the previous month from a month/year
+explicitly stated in an earlier user question. For ambiguous pronouns, an optional
+bounded model call can rewrite the question into a typed standalone question. It sees
+only recent user questions, never assistant assertions, and cannot modify authorised
+scope. Invalid or unavailable model rewrites fall back to the deterministic rewrite.
+If no context is available, Metis asks which topic/period the question refers to. The
+original question is still saved and answered.
 
 Each turn retrieves fresh evidence. Old assistant messages with unavailable citations
 are excluded from model history; transcript views redact those answers. The UI

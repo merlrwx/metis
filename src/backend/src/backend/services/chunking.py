@@ -88,6 +88,8 @@ def split_document(
                     metadata["page"] = record["page"]
                 if record.get("level") is not None:
                     metadata["heading_level"] = record["level"]
+                if record.get("heading_path"):
+                    metadata["heading_path"] = record["heading_path"]
                 chunks.append(
                     TextChunk(
                         content=content,

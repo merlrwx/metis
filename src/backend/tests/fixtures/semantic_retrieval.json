@@ -2,126 +2,751 @@
   {
     "id": "pay",
     "text": "PAYSLIP. Period: fortnight ending 30 September. Gross earnings AUD 2500. Tax withheld AUD 500. Net payment AUD 2000.",
-    "question": "How much did I get paid in two weeks?"
+    "question": "How much did I get paid in two weeks?",
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Pay"
+    ],
+    "supporting_chunks": [
+      "pay-chunk-1"
+    ],
+    "expected_answer": "PAYSLIP. Period: fortnight ending 30 September. Gross earnings AUD 2500. Tax withheld AUD 500. Net payment AUD 2000.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "leave",
     "text": "Annual leave requests need manager approval at least fourteen days before the planned absence.",
-    "question": "Who approves my holiday request?"
+    "question": "Who approves my holiday request?",
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Leave"
+    ],
+    "supporting_chunks": [
+      "leave-chunk-1"
+    ],
+    "expected_answer": "Annual leave requests need manager approval at least fourteen days before the planned absence.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "incident",
     "text": "After a medication incident notify the clinical supervisor and record the event in the incident register.",
-    "question": "What should I do if the wrong medicine was administered?"
+    "question": "What should I do if the wrong medicine was administered?",
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Incident"
+    ],
+    "supporting_chunks": [
+      "incident-chunk-1"
+    ],
+    "expected_answer": "After a medication incident notify the clinical supervisor and record the event in the incident register.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "equipment",
     "text": "Faulty equipment must be isolated, labelled out of service and reported to facilities.",
-    "question": "The machine has broken. Can I keep using it?"
+    "question": "The machine has broken. Can I keep using it?",
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Equipment"
+    ],
+    "supporting_chunks": [
+      "equipment-chunk-1"
+    ],
+    "expected_answer": "Faulty equipment must be isolated, labelled out of service and reported to facilities.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "access",
     "text": "New employees require their manager to request workstation access through the IT service desk.",
-    "question": "How do new staff get a computer login?"
+    "question": "How do new staff get a computer login?",
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Access"
+    ],
+    "supporting_chunks": [
+      "access-chunk-1"
+    ],
+    "expected_answer": "New employees require their manager to request workstation access through the IT service desk.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "supplier",
     "text": "Supplier ACME-482 supplies nitrile examination gloves. Order through procurement.",
-    "question": "Who supplies our examination gloves?"
+    "question": "Who supplies our examination gloves?",
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Supplier"
+    ],
+    "supporting_chunks": [
+      "supplier-chunk-1"
+    ],
+    "expected_answer": "Supplier ACME-482 supplies nitrile examination gloves. Order through procurement.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "backup",
     "text": "Database backups run nightly. Restore to an isolated environment and verify data before promotion.",
-    "question": "How often is our database backed up?"
+    "question": "How often is our database backed up?",
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Backup"
+    ],
+    "supporting_chunks": [
+      "backup-chunk-1"
+    ],
+    "expected_answer": "Database backups run nightly. Restore to an isolated environment and verify data before promotion.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "refund",
     "text": "Customers may request a refund within thirty days with the original receipt.",
-    "question": "Can a customer get their money back after a fortnight?"
+    "question": "Can a customer get their money back after a fortnight?",
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Refund"
+    ],
+    "supporting_chunks": [
+      "refund-chunk-1"
+    ],
+    "expected_answer": "Customers may request a refund within thirty days with the original receipt.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "fire",
     "text": "On hearing the fire alarm evacuate through the nearest safe exit and assemble in the north car park.",
-    "question": "Where do we meet when the alarm sounds?"
+    "question": "Where do we meet when the alarm sounds?",
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Fire"
+    ],
+    "supporting_chunks": [
+      "fire-chunk-1"
+    ],
+    "expected_answer": "On hearing the fire alarm evacuate through the nearest safe exit and assemble in the north car park.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "remote",
     "text": "Remote work is permitted two days each week with team leader approval.",
-    "question": "How many days can I work from home?"
+    "question": "How many days can I work from home?",
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Remote"
+    ],
+    "supporting_chunks": [
+      "remote-chunk-1"
+    ],
+    "expected_answer": "Remote work is permitted two days each week with team leader approval.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "travel",
     "text": "Business travel requires approval before booking. Economy airfare and reasonable accommodation are reimbursable.",
-    "question": "Do I need permission before buying flights for work?"
+    "question": "Do I need permission before buying flights for work?",
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Travel"
+    ],
+    "supporting_chunks": [
+      "travel-chunk-1"
+    ],
+    "expected_answer": "Business travel requires approval before booking. Economy airfare and reasonable accommodation are reimbursable.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "password",
     "text": "Account passwords require at least fourteen characters. Enable multi-factor authentication.",
-    "question": "What are the rules for a new account password?"
+    "question": "What are the rules for a new account password?",
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Password"
+    ],
+    "supporting_chunks": [
+      "password-chunk-1"
+    ],
+    "expected_answer": "Account passwords require at least fourteen characters. Enable multi-factor authentication.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "breach",
     "text": "Suspected data exposure must be reported immediately to the security officer. Preserve relevant logs.",
-    "question": "Who should I tell if confidential information leaks?"
+    "question": "Who should I tell if confidential information leaks?",
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Breach"
+    ],
+    "supporting_chunks": [
+      "breach-chunk-1"
+    ],
+    "expected_answer": "Suspected data exposure must be reported immediately to the security officer. Preserve relevant logs.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "training",
     "text": "Mandatory safety training must be completed within the first week of employment.",
-    "question": "When must a new starter finish safety induction?"
+    "question": "When must a new starter finish safety induction?",
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Training"
+    ],
+    "supporting_chunks": [
+      "training-chunk-1"
+    ],
+    "expected_answer": "Mandatory safety training must be completed within the first week of employment.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "invoice",
     "text": "Invoice INV-2026-17 is due on 15 October. Amount payable AUD 740.00.",
-    "question": "When do we need to pay invoice INV-2026-17?"
+    "question": "When do we need to pay invoice INV-2026-17?",
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Invoice"
+    ],
+    "supporting_chunks": [
+      "invoice-chunk-1"
+    ],
+    "expected_answer": "Invoice INV-2026-17 is due on 15 October. Amount payable AUD 740.00.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "overtime",
     "text": "Overtime must be authorised in advance. Approved hours are paid at one and a half times the ordinary hourly rate.",
-    "question": "Is extra work paid at a higher rate?"
+    "question": "Is extra work paid at a higher rate?",
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Overtime"
+    ],
+    "supporting_chunks": [
+      "overtime-chunk-1"
+    ],
+    "expected_answer": "Overtime must be authorised in advance. Approved hours are paid at one and a half times the ordinary hourly rate.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "sick",
     "text": "Notify your manager before your shift if unwell. A medical certificate is required after two consecutive days.",
-    "question": "Do I need a doctors note after three sick days?"
+    "question": "Do I need a doctors note after three sick days?",
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Sick"
+    ],
+    "supporting_chunks": [
+      "sick-chunk-1"
+    ],
+    "expected_answer": "Notify your manager before your shift if unwell. A medical certificate is required after two consecutive days.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "delivery",
     "text": "Incoming parcels are received at the rear loading dock between 8am and 4pm.",
-    "question": "Where should a courier bring a package?"
+    "question": "Where should a courier bring a package?",
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Delivery"
+    ],
+    "supporting_chunks": [
+      "delivery-chunk-1"
+    ],
+    "expected_answer": "Incoming parcels are received at the rear loading dock between 8am and 4pm.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "retention",
     "text": "Customer records are retained for seven years after account closure unless a legal hold applies.",
-    "question": "How long do we keep information after a customer leaves?"
+    "question": "How long do we keep information after a customer leaves?",
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Retention"
+    ],
+    "supporting_chunks": [
+      "retention-chunk-1"
+    ],
+    "expected_answer": "Customer records are retained for seven years after account closure unless a legal hold applies.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "roster",
     "text": "The next fortnight roster is published each Thursday afternoon in the staff portal.",
-    "question": "When can I see my upcoming shifts?"
+    "question": "When can I see my upcoming shifts?",
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Roster"
+    ],
+    "supporting_chunks": [
+      "roster-chunk-1"
+    ],
+    "expected_answer": "The next fortnight roster is published each Thursday afternoon in the staff portal.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "vpn",
     "text": "To connect from outside the office use the approved VPN client and complete the second-factor challenge.",
-    "question": "How do I connect to the office network from home?"
+    "question": "How do I connect to the office network from home?",
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Vpn"
+    ],
+    "supporting_chunks": [
+      "vpn-chunk-1"
+    ],
+    "expected_answer": "To connect from outside the office use the approved VPN client and complete the second-factor challenge.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "parking",
     "text": "Staff parking permits are issued by reception. Visitor spaces must remain available for guests.",
-    "question": "Where can I get permission to park at work?"
+    "question": "Where can I get permission to park at work?",
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Parking"
+    ],
+    "supporting_chunks": [
+      "parking-chunk-1"
+    ],
+    "expected_answer": "Staff parking permits are issued by reception. Visitor spaces must remain available for guests.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "expense",
     "text": "Submit expense receipts through the finance portal by the fifth working day of the following month.",
-    "question": "When do I need to claim my work expenses?"
+    "question": "When do I need to claim my work expenses?",
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Expense"
+    ],
+    "supporting_chunks": [
+      "expense-chunk-1"
+    ],
+    "expected_answer": "Submit expense receipts through the finance portal by the fifth working day of the following month.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "meeting",
     "text": "The monthly operations review occurs on the first Monday at 10am in meeting room Delta.",
-    "question": "When and where is the regular operations meeting?"
+    "question": "When and where is the regular operations meeting?",
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Meeting"
+    ],
+    "supporting_chunks": [
+      "meeting-chunk-1"
+    ],
+    "expected_answer": "The monthly operations review occurs on the first Monday at 10am in meeting room Delta.",
+    "source": "Synthetic QA library"
   },
   {
     "id": "emergency",
     "text": "For a life-threatening emergency call the emergency services number immediately, then notify the duty manager.",
-    "question": "What should I do when someone needs urgent medical help?"
+    "question": "What should I do when someone needs urgent medical help?",
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Emergency"
+    ],
+    "supporting_chunks": [
+      "emergency-chunk-1"
+    ],
+    "expected_answer": "For a life-threatening emergency call the emergency services number immediately, then notify the duty manager.",
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-01-paraphrase",
+    "text": "New employees require their manager to request workstation access through the IT service desk.",
+    "question": "How do staff request a computer account?",
+    "expected_answer": "New employees require their manager to request workstation access through the IT service desk.",
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Paraphrase"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-01-paraphrase-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-02-multi-paragraph",
+    "text": "Incoming parcels are received at the rear loading dock between 8am and 4pm.\n\nThe receiving desk is beside the loading area.",
+    "question": "Where should a courier leave a parcel?",
+    "expected_answer": "Incoming parcels are received at the rear loading dock between 8am and 4pm.\n\nThe receiving desk is beside the loading area.",
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Multi-Paragraph"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-02-multi-paragraph-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-03-multi-turn",
+    "text": "PAYSLIP. January 2026 net payment AUD 2000.10.\n\nPAYSLIP. February 2026 net payment AUD 2100.25.",
+    "question": "What about the next one?",
+    "expected_answer": "PAYSLIP. January 2026 net payment AUD 2000.10.\n\nPAYSLIP. February 2026 net payment AUD 2100.25.",
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Multi-Turn"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-03-multi-turn-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-04-negative",
+    "text": "The synthetic archive contains no information about lunar chess contests.",
+    "question": "Who won the lunar chess contest in 2070?",
+    "expected_answer": "The synthetic archive contains no information about lunar chess contests.",
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Negative"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-04-negative-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-05-multi-citation",
+    "text": "Notify the clinical supervisor.\n\nRecord the event in the incident register.",
+    "question": "What must happen after an incident?",
+    "expected_answer": "Notify the clinical supervisor.\n\nRecord the event in the incident register.",
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Multi-Citation"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-05-multi-citation-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-06-paraphrase",
+    "text": "New employees require their manager to request workstation access through the IT service desk.",
+    "question": "How do staff request a computer account?",
+    "expected_answer": "New employees require their manager to request workstation access through the IT service desk.",
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Paraphrase"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-06-paraphrase-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-07-multi-paragraph",
+    "text": "Incoming parcels are received at the rear loading dock between 8am and 4pm.\n\nThe receiving desk is beside the loading area.",
+    "question": "Where should a courier leave a parcel?",
+    "expected_answer": "Incoming parcels are received at the rear loading dock between 8am and 4pm.\n\nThe receiving desk is beside the loading area.",
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Multi-Paragraph"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-07-multi-paragraph-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-08-multi-turn",
+    "text": "PAYSLIP. January 2026 net payment AUD 2000.10.\n\nPAYSLIP. February 2026 net payment AUD 2100.25.",
+    "question": "What about the next one?",
+    "expected_answer": "PAYSLIP. January 2026 net payment AUD 2000.10.\n\nPAYSLIP. February 2026 net payment AUD 2100.25.",
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Multi-Turn"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-08-multi-turn-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-09-negative",
+    "text": "The synthetic archive contains no information about lunar chess contests.",
+    "question": "Who won the lunar chess contest in 2070?",
+    "expected_answer": "The synthetic archive contains no information about lunar chess contests.",
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Negative"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-09-negative-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-10-multi-citation",
+    "text": "Notify the clinical supervisor.\n\nRecord the event in the incident register.",
+    "question": "What must happen after an incident?",
+    "expected_answer": "Notify the clinical supervisor.\n\nRecord the event in the incident register.",
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Multi-Citation"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-10-multi-citation-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-11-paraphrase",
+    "text": "New employees require their manager to request workstation access through the IT service desk.",
+    "question": "How do staff request a computer account?",
+    "expected_answer": "New employees require their manager to request workstation access through the IT service desk.",
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Paraphrase"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-11-paraphrase-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-12-multi-paragraph",
+    "text": "Incoming parcels are received at the rear loading dock between 8am and 4pm.\n\nThe receiving desk is beside the loading area.",
+    "question": "Where should a courier leave a parcel?",
+    "expected_answer": "Incoming parcels are received at the rear loading dock between 8am and 4pm.\n\nThe receiving desk is beside the loading area.",
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Multi-Paragraph"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-12-multi-paragraph-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-13-multi-turn",
+    "text": "PAYSLIP. January 2026 net payment AUD 2000.10.\n\nPAYSLIP. February 2026 net payment AUD 2100.25.",
+    "question": "What about the next one?",
+    "expected_answer": "PAYSLIP. January 2026 net payment AUD 2000.10.\n\nPAYSLIP. February 2026 net payment AUD 2100.25.",
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Multi-Turn"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-13-multi-turn-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-14-negative",
+    "text": "The synthetic archive contains no information about lunar chess contests.",
+    "question": "Who won the lunar chess contest in 2070?",
+    "expected_answer": "The synthetic archive contains no information about lunar chess contests.",
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Negative"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-14-negative-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-15-multi-citation",
+    "text": "Notify the clinical supervisor.\n\nRecord the event in the incident register.",
+    "question": "What must happen after an incident?",
+    "expected_answer": "Notify the clinical supervisor.\n\nRecord the event in the incident register.",
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Multi-Citation"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-15-multi-citation-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-16-paraphrase",
+    "text": "New employees require their manager to request workstation access through the IT service desk.",
+    "question": "How do staff request a computer account?",
+    "expected_answer": "New employees require their manager to request workstation access through the IT service desk.",
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Paraphrase"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-16-paraphrase-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-17-multi-paragraph",
+    "text": "Incoming parcels are received at the rear loading dock between 8am and 4pm.\n\nThe receiving desk is beside the loading area.",
+    "question": "Where should a courier leave a parcel?",
+    "expected_answer": "Incoming parcels are received at the rear loading dock between 8am and 4pm.\n\nThe receiving desk is beside the loading area.",
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Multi-Paragraph"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-17-multi-paragraph-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-18-multi-turn",
+    "text": "PAYSLIP. January 2026 net payment AUD 2000.10.\n\nPAYSLIP. February 2026 net payment AUD 2100.25.",
+    "question": "What about the next one?",
+    "expected_answer": "PAYSLIP. January 2026 net payment AUD 2000.10.\n\nPAYSLIP. February 2026 net payment AUD 2100.25.",
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Multi-Turn"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-18-multi-turn-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-19-negative",
+    "text": "The synthetic archive contains no information about lunar chess contests.",
+    "question": "Who won the lunar chess contest in 2070?",
+    "expected_answer": "The synthetic archive contains no information about lunar chess contests.",
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Negative"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-19-negative-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-20-multi-citation",
+    "text": "Notify the clinical supervisor.\n\nRecord the event in the incident register.",
+    "question": "What must happen after an incident?",
+    "expected_answer": "Notify the clinical supervisor.\n\nRecord the event in the incident register.",
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Multi-Citation"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-20-multi-citation-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-21-paraphrase",
+    "text": "New employees require their manager to request workstation access through the IT service desk.",
+    "question": "How do staff request a computer account?",
+    "expected_answer": "New employees require their manager to request workstation access through the IT service desk.",
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Paraphrase"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-21-paraphrase-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-22-multi-paragraph",
+    "text": "Incoming parcels are received at the rear loading dock between 8am and 4pm.\n\nThe receiving desk is beside the loading area.",
+    "question": "Where should a courier leave a parcel?",
+    "expected_answer": "Incoming parcels are received at the rear loading dock between 8am and 4pm.\n\nThe receiving desk is beside the loading area.",
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Multi-Paragraph"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-22-multi-paragraph-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-23-multi-turn",
+    "text": "PAYSLIP. January 2026 net payment AUD 2000.10.\n\nPAYSLIP. February 2026 net payment AUD 2100.25.",
+    "question": "What about the next one?",
+    "expected_answer": "PAYSLIP. January 2026 net payment AUD 2000.10.\n\nPAYSLIP. February 2026 net payment AUD 2100.25.",
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Multi-Turn"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-23-multi-turn-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-24-negative",
+    "text": "The synthetic archive contains no information about lunar chess contests.",
+    "question": "Who won the lunar chess contest in 2070?",
+    "expected_answer": "The synthetic archive contains no information about lunar chess contests.",
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Negative"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-24-negative-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-retrieval-25-multi-citation",
+    "text": "Notify the clinical supervisor.\n\nRecord the event in the incident register.",
+    "question": "What must happen after an incident?",
+    "expected_answer": "Notify the clinical supervisor.\n\nRecord the event in the incident register.",
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Multi-Citation"
+    ],
+    "supporting_chunks": [
+      "synthetic-retrieval-25-multi-citation-chunk-1"
+    ],
+    "source": "Synthetic QA library"
   }
 ]

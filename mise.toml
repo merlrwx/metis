@@ -61,6 +61,10 @@ run = "uv run --locked --project src/backend python scripts/evaluate_llm.py"
 description = "Opt-in synthetic retrieval measurement against an isolated PostgreSQL database"
 run = "uv run --locked --project src/backend python scripts/benchmark_retrieval.py"
 
+[tasks.benchmark-embeddings]
+description = "Compare configured embedding models and optional reranking on synthetic retrieval fixtures"
+run = "uv run --locked --project src/backend python scripts/benchmark_embeddings.py"
+
 [tasks.verify-manifests]
 description = "Render local Kubernetes overlays independently of the stable goal verifier"
 run = "kubectl kustomize kubernetes/manifests/base >/dev/null && kubectl kustomize kubernetes/manifests/dev >/dev/null"
@@ -80,6 +84,10 @@ run = "uv run --locked --project src/backend python scripts/evaluate_answers.py"
 [tasks.evaluate-pipeline]
 description = "Opt-in actual synthetic ingestion/retrieval/live ChatMock answer evaluation"
 run = "uv run --locked --project src/backend python scripts/evaluate_pipeline.py"
+
+[tasks.quality-report]
+description = "Summarize evaluation artifacts and compare quality categories with a prior report"
+run = "uv run --locked --project src/backend python scripts/quality_report.py"
 
 [tasks.local]
 description = "Start and check existing Metis DevPod, semantic services and local ChatMock forwarding"

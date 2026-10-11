@@ -21,9 +21,32 @@ def test_markdown_extraction_normalizes_text_and_preserves_sections():
 
     assert result.text == "# Policy\n\nKeep records.\n\n## Review\nCheck weekly."
     assert result.metadata["sections"] == [
-        {"title": "Policy", "level": 1, "start": 0, "end": 23},
-        {"title": "Review", "level": 2, "start": 25, "end": 48},
+        {
+            "title": "Policy",
+            "level": 1,
+            "start": 0,
+            "end": 23,
+            "heading_path": ["Policy"],
+        },
+        {
+            "title": "Review",
+            "level": 2,
+            "start": 25,
+            "end": 48,
+            "heading_path": ["Policy", "Review"],
+        },
     ]
+
+
+def test_heading_hierarchy_is_preserved_on_chunks():
+    result = ingestion.extract_document(
+        "policy.md", "text/markdown", b"# Policy\nIntro\n## Review\nCheck weekly."
+    )
+    from backend.services.chunking import split_document
+
+    chunks = split_document(result.text, result.metadata)
+    assert chunks[0].metadata["heading_path"] == ["Policy"]
+    assert chunks[1].metadata["heading_path"] == ["Policy", "Review"]
 
 
 def test_docx_extraction_keeps_heading_and_table_text():
@@ -42,7 +65,13 @@ def test_docx_extraction_keeps_heading_and_table_text():
 
     assert result.text == "Incident policy\nRecord the incident.\nOwner | Nurse"
     assert result.metadata["sections"] == [
-        {"title": "Incident policy", "level": 1, "start": 0, "end": 50}
+        {
+            "title": "Incident policy",
+            "level": 1,
+            "start": 0,
+            "end": 50,
+            "heading_path": ["Incident policy"],
+        }
     ]
 
 

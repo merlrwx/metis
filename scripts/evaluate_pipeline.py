@@ -9,11 +9,13 @@ from time import perf_counter
 from uuid import uuid4
 
 from backend.connectors.base import RemoteDocument
-from backend.models import Organisation, Source
+from backend.evaluation import failure_stage, provider_details
+from backend.evaluation_fixtures import build_synthetic_document
+from backend.models import DocumentVersion, Organisation, Source
 from backend.services import documents, followups, knowledge, rag, source_sync
 from backend.storage import LocalObjectStorage
 from backend.tasks import run_ingestion_job
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 from sqlalchemy.engine import make_url
 
 from backend import chat, database, embeddings
@@ -23,7 +25,7 @@ async def evaluate():
     cases = json.loads(
         (
             Path(__file__).resolve().parents[1]
-            / "src/backend/tests/fixtures/answer_quality.json"
+            / "src/backend/tests/fixtures/heldout_answer_quality.json"
         ).read_text()
     )
     pay_texts = cases[1]["texts"]
@@ -61,6 +63,8 @@ async def evaluate():
     provider = chat.get_chat_provider()
     tenants = [uuid4(), uuid4()]
     report = []
+    index_readiness = "unknown"
+    extraction_availability = "unknown"
     with TemporaryDirectory() as folder, database.SessionLocal() as session:
         os.environ["OBJECT_STORAGE_BACKEND"] = "local"
         os.environ["OBJECT_STORAGE_LOCAL_DIR"] = folder
@@ -105,12 +109,17 @@ async def evaluate():
                                 storage,
                             )
                         else:
+                            filename, mime_type, contents = build_synthetic_document(
+                                text,
+                                case.get("format", "txt"),
+                                case.get("supporting_sections", [case["id"]])[0],
+                            )
                             doc, job, _ = documents.upload_document(
                                 session,
                                 tenants[0],
-                                f"synthetic-{len(corpus)}.txt",
-                                "text/plain",
-                                text.encode(),
+                                filename,
+                                mime_type,
+                                contents,
                                 storage,
                             )
                         corpus[text] = doc.id
@@ -191,9 +200,20 @@ async def evaluate():
                 # The production complete guard wording is code-owned, not model-generated.
                 if case["id"] == "complete-guard":
                     passed = result.outcome == "clarification_needed"
+                supplied = rag.supporting_evidence(hits, document_ids=selected)
+                expected_retrieved = bool(retrieved & expected[case["id"]])
+                expected_supplied = bool(
+                    {hit.document.id for hit in supplied} & expected[case["id"]]
+                )
                 row = {
                     "case": case["id"],
                     "passed": passed,
+                    "failure_stage": failure_stage(
+                        expected_retrieved=expected_retrieved,
+                        expected_supplied=expected_supplied,
+                    )
+                    if not passed
+                    else None,
                     "expected_document_coverage": len(retrieved & expected[case["id"]])
                     / len(expected[case["id"]]),
                     "retrieval_seconds": round(retrieval_seconds, 3),
@@ -204,6 +224,20 @@ async def evaluate():
                 }
                 report.append(row)
                 print(json.dumps(row), flush=True)
+            organisation = session.get(Organisation, tenants[0])
+            index_readiness = organisation.index_status
+            extraction_availability = (
+                "available"
+                if session.scalar(
+                    select(func.count())
+                    .select_from(DocumentVersion)
+                    .where(
+                        DocumentVersion.organisation_id == tenants[0],
+                        DocumentVersion.extracted_text.is_not(None),
+                    )
+                )
+                else "unavailable"
+            )
         finally:
             session.rollback()
             session.execute(delete(Organisation).where(Organisation.id.in_(tenants)))
@@ -213,9 +247,13 @@ async def evaluate():
     output.write_text(
         json.dumps(
             {
-                "embedding_model": embedding.model_id,
-                "chat_model": os.environ.get("GPTMOCK_MODEL", "gpt-5.6-luna"),
+                **provider_details(embedding, provider),
                 "source": "Microsoft 365 fixture; live ChatMock",
+                "index_readiness": index_readiness,
+                "reindex_readiness": "ready"
+                if index_readiness == "ready"
+                else index_readiness,
+                "extraction_availability": extraction_availability,
                 "cases": report,
             },
             indent=2,

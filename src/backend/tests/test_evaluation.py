@@ -1,0 +1,132 @@
+import json
+from pathlib import Path
+from unittest.mock import patch
+
+from backend.evaluation import answer_matches_case, failure_stage
+
+
+def test_fixed_evidence_answer_evaluation_rejects_unsupported_injected_claim():
+    from types import SimpleNamespace
+
+    case = {
+        "outcome": "answered",
+        "claims": ["12"],
+        "forbidden_claims": ["99 years"],
+        "citations": 1,
+    }
+    supported = SimpleNamespace(
+        outcome="answered", content="The warranty is 12 months [C1].", citations=[1]
+    )
+    injected = SimpleNamespace(
+        outcome="answered",
+        content="The warranty is 12 months [C1], or 99 years [C1].",
+        citations=[1],
+    )
+
+    assert answer_matches_case(case, supported)
+    assert not answer_matches_case(case, injected)
+
+
+from backend.evaluation_fixtures import build_synthetic_document
+from backend.services import ingestion
+
+from backend import observability
+
+
+def test_failure_stages_distinguish_retrieval_filtering_and_answer_failures():
+    assert (
+        failure_stage(expected_retrieved=False, expected_supplied=False)
+        == "evidence_not_retrieved"
+    )
+    assert (
+        failure_stage(expected_retrieved=True, expected_supplied=False)
+        == "evidence_retrieved_but_discarded"
+    )
+    assert (
+        failure_stage(expected_retrieved=True, expected_supplied=True)
+        == "evidence_supplied_answer_or_citation_incorrect"
+    )
+
+
+def test_diagnostics_are_opt_in(monkeypatch):
+    monkeypatch.delenv("METIS_DIAGNOSTICS_ENABLED", raising=False)
+    with patch.object(observability, "log_event") as log_event:
+        observability.diagnostic_event("retrieval", score=0.8)
+        log_event.assert_not_called()
+    monkeypatch.setenv("METIS_DIAGNOSTICS_ENABLED", "true")
+    with patch.object(observability, "log_event") as log_event:
+        observability.diagnostic_event("retrieval", score=0.8)
+        log_event.assert_called_once_with("diagnostic_retrieval", score=0.8)
+
+
+def test_evaluation_fixtures_have_fifty_annotated_cases_across_formats():
+    fixture_dir = Path(__file__).parent / "fixtures"
+    for name in ("answer_quality.json", "semantic_retrieval.json"):
+        cases = json.loads((fixture_dir / name).read_text())
+        assert len(cases) >= 50
+        assert {case["format"] for case in cases} >= {
+            "txt",
+            "markdown",
+            "csv",
+            "docx",
+            "pdf",
+        }
+        assert all(
+            case["source"]
+            and case["source_version"]
+            and case["expected_answer"]
+            and case["supporting_sections"]
+            and case["supporting_chunks"]
+            for case in cases
+        )
+
+
+def test_heldout_evaluation_cases_are_separate_from_benchmark_fixtures():
+    fixture_dir = Path(__file__).parent / "fixtures"
+    heldout_retrieval = json.loads(
+        (fixture_dir / "heldout_semantic_retrieval.json").read_text()
+    )
+    heldout_answers = json.loads(
+        (fixture_dir / "heldout_answer_quality.json").read_text()
+    )
+    tuning_ids = {
+        case["id"]
+        for name in ("semantic_retrieval.json", "answer_quality.json")
+        for case in json.loads((fixture_dir / name).read_text())
+    }
+    assert len(heldout_retrieval) >= 5
+    assert {case["id"] for case in heldout_retrieval}.isdisjoint(tuning_ids)
+    assert {case["id"] for case in heldout_answers}.isdisjoint(tuning_ids)
+    assert {case["id"] for case in heldout_retrieval} == {
+        case["id"] for case in heldout_answers
+    }
+    assert {case["format"] for case in heldout_answers} >= {
+        "txt",
+        "markdown",
+        "csv",
+        "docx",
+        "pdf",
+    }
+
+
+def test_format_builders_produce_files_readable_by_production_extractors():
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures" / "semantic_retrieval.json").read_text()
+    )
+    extensions = {
+        "pdf": ".pdf",
+        "docx": ".docx",
+        "markdown": ".md",
+        "txt": ".txt",
+        "csv": ".csv",
+    }
+    for format_name, extension in extensions.items():
+        case = next(case for case in fixture if case["format"] == format_name)
+        filename, mime_type, contents = build_synthetic_document(
+            case["text"], format_name, case["supporting_sections"][0]
+        )
+        assert filename.endswith(extension)
+        assert ingestion.validate_upload(filename, mime_type, contents) == mime_type
+        extracted = ingestion.extract_document(filename, mime_type, contents)
+        assert extracted.text
+        assert extracted.metadata.get("pages") or extracted.metadata.get("sections")

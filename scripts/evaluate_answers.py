@@ -5,9 +5,12 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
-from backend.chat import get_chat_provider
+from backend.chat import AnswerFormatError, ChatProviderError, get_chat_provider
+from backend.evaluation import answer_matches_case, failure_stage, provider_details
 from backend.services.knowledge import SearchHit
 from backend.services.rag import answer_question
+
+from backend import embeddings
 
 
 def main():
@@ -20,11 +23,13 @@ def main():
     cases = json.loads(
         (
             Path(__file__).resolve().parents[1]
-            / "src/backend/tests/fixtures/answer_quality.json"
+            / "src/backend/tests/fixtures/heldout_answer_quality.json"
         ).read_text()
     )
     provider = get_chat_provider()
     failures = []
+    report = []
+    embedding = embeddings.get_embedding_provider()
     for case in cases:
         hits = [
             SearchHit(
@@ -41,36 +46,67 @@ def main():
             )
             for index, text in enumerate(case["texts"])
         ]
-        result = answer_question(
-            case["question"], case.get("history", []), hits, provider
-        )
-        outcomes = (
-            case["outcome"] if isinstance(case["outcome"], list) else [case["outcome"]]
-        )
-        passed = (
-            result.outcome in outcomes
-            and len(result.citations) >= case["citations"]
-            and all(
-                claim.casefold() in result.content.casefold()
-                for claim in case["claims"]
+        try:
+            result = answer_question(
+                case["question"], case.get("history", []), hits, provider
             )
-        )
-        print(
-            json.dumps(
-                {
-                    "case": case["id"],
-                    "passed": passed,
-                    "outcome": result.outcome,
-                    "answer": result.content,
-                    "citations": len(result.citations),
-                }
-            ),
-            flush=True,
-        )
+            failure_kind = (
+                "missing_evidence"
+                if result.outcome == "insufficient_evidence"
+                else "unsupported_answer"
+                if result.outcome == "partially_answered"
+                else None
+            )
+        except AnswerFormatError:
+            failure_kind = "format"
+            result = None
+        except ChatProviderError:
+            failure_kind = "provider"
+            result = None
+        passed = result is not None and answer_matches_case(case, result)
+        if not passed and result is not None and failure_kind is None:
+            failure_kind = "unsupported_answer"
+        row = {
+            "case": case["id"],
+            "passed": passed,
+            "failure_kind": failure_kind if not passed else None,
+            "failure_stage": failure_stage(
+                expected_retrieved=True, expected_supplied=True
+            )
+            if not passed
+            else None,
+            "extraction_availability": "synthetic_excerpts_supplied",
+            "index_readiness": "not_required_for_answer_only_evaluation",
+            "reindex_readiness": "not_required_for_answer_only_evaluation",
+            "outcome": result.outcome if result else None,
+            "answer": result.content if result else None,
+            "citations": len(result.citations) if result else 0,
+            **provider_details(embedding, provider),
+        }
+        print(json.dumps(row), flush=True)
+        report.append(row)
         if not passed:
             failures.append(case["id"])
     if failures:
+        output = Path(
+            os.environ.get("METIS_ANSWER_EVAL_OUTPUT", ".agent/answer-evaluation.json")
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(
+                {**provider_details(embedding, provider), "cases": report}, indent=2
+            )
+            + "\n"
+        )
         raise SystemExit(f"Review failed synthetic cases: {failures}")
+    output = Path(
+        os.environ.get("METIS_ANSWER_EVAL_OUTPUT", ".agent/answer-evaluation.json")
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps({**provider_details(embedding, provider), "cases": report}, indent=2)
+        + "\n"
+    )
 
 
 if __name__ == "__main__":

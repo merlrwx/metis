@@ -57,6 +57,11 @@ def backend_response(request, timeout=30, *, documents=None, memberships=None):
         body = {"id": ORG_ID, "name": "North Clinic"}
     elif path == f"/api/organisations/{ORG_ID}/documents":
         body = document_response() if documents is None else documents
+    elif path == f"/api/organisations/{ORG_ID}/documents/{DOC_ID}/detail":
+        body = {
+            "extraction_preview": "Extracted policy text",
+            "preview_truncated": False,
+        }
     elif path == f"/api/organisations/{ORG_ID}/sources" and method == "GET":
         body = [
             {
@@ -223,13 +228,30 @@ def test_chat_page_shows_saved_citations():
         {
             "role": "assistant",
             "content": "Follow the incident policy.",
+            "outcome": "partially_answered",
             "citations": [
                 {
+                    "chunk_id": "44444444-4444-4444-8444-444444444444",
+                    "document_id": DOC_ID,
+                    "document_version_id": "55555555-5555-4555-8555-555555555555",
                     "document_title": "Medication policy",
                     "source_name": "Policies",
+                    "source_type": "microsoft365",
+                    "source_freshness": "stale",
+                    "source_sync_status": "failed",
                     "page": 3,
                     "section": "Response",
                     "snippet": "Notify the supervisor.",
+                }
+            ],
+            "related_passages": [
+                {
+                    "chunk_id": "66666666-6666-4666-8666-666666666666",
+                    "document_id": DOC_ID,
+                    "document_title": "Medication policy",
+                    "page": 4,
+                    "section": "Escalation",
+                    "snippet": "Contact the on-call manager.",
                 }
             ],
         }
@@ -242,7 +264,110 @@ def test_chat_page_shows_saved_citations():
     assert not app.exception
     assert any(item.value == "Chat" for item in app.title)
     assert any("Follow the incident policy." in item.value for item in app.markdown)
+    assert any("failed indexing" in item.value for item in app.warning)
     assert any("Medication policy" in item.label for item in app.expander)
+    assert any(button.label == "Preview extracted text" for button in app.button)
+    assert any("Source freshness · Stale" == item.value for item in app.caption)
+    assert any("Related retrieved passages · 1" == item.label for item in app.expander)
+
+    with patch("api_client.urlopen", side_effect=backend_response) as urlopen:
+        next(
+            button for button in app.button if button.label == "Preview extracted text"
+        ).click()
+        app.run()
+    preview_request = urlopen.call_args.args[0]
+    assert preview_request.full_url.endswith(f"/documents/{DOC_ID}/detail")
+    assert preview_request.get_header("Authorization") == "Bearer signed-token"
+    assert any("Extracted policy text" in item.value for item in app.text)
+
+
+def test_chat_citation_preview_is_hidden_from_members():
+    member = user_response(
+        memberships=[
+            {
+                "organisation_id": ORG_ID,
+                "organisation_name": "North Clinic",
+                "role": "member",
+            }
+        ]
+    )
+
+    def open_request(request, timeout):
+        path = urlparse(request.full_url).path
+        if path == "/api/auth/me":
+            return io.BytesIO(json.dumps(member).encode())
+        return backend_response(request, timeout)
+
+    app = AppTest.from_file(str(APP))
+    app.session_state["metis_token"] = "signed-token"
+    app.session_state["metis_chat_org"] = ORG_ID
+    app.session_state["metis_chat_messages"] = [
+        {
+            "role": "assistant",
+            "content": "Answer",
+            "citations": [
+                {
+                    "chunk_id": "44444444-4444-4444-8444-444444444444",
+                    "document_id": DOC_ID,
+                    "document_title": "Medication policy",
+                    "snippet": "Notify the supervisor.",
+                }
+            ],
+        }
+    ]
+    with patch("api_client.urlopen", side_effect=open_request):
+        app.run()
+        app.sidebar.radio[0].set_value("Chat")
+        app.run()
+
+    assert not app.exception
+    assert not any(button.label == "Preview extracted text" for button in app.button)
+
+
+@pytest.mark.parametrize(
+    ("status", "detail", "expected"),
+    [
+        (409, "Knowledge is being re-indexed", "Knowledge indexing is in progress"),
+        (503, "Chat provider is unavailable", "provider is unavailable"),
+    ],
+)
+def test_chat_failure_explains_next_action(status, detail, expected):
+    def open_request(request, timeout):
+        if urlparse(request.full_url).path.endswith("/chat"):
+            raise HTTPError(
+                request.full_url,
+                status,
+                "Failure",
+                {},
+                io.BytesIO(json.dumps({"detail": detail}).encode()),
+            )
+        return backend_response(request, timeout)
+
+    app = AppTest.from_file(str(APP))
+    app.session_state["metis_token"] = "signed-token"
+    with patch("api_client.urlopen", side_effect=open_request):
+        app.run()
+        app.sidebar.radio[0].set_value("Chat")
+        app.run()
+        app.chat_input[0].set_value("What does the policy say?")
+        app.run()
+
+    assert not app.exception
+    assert any(expected in error.value for error in app.error)
+
+
+def test_chat_shows_retrieval_then_generation_progress():
+    app = AppTest.from_file(str(APP))
+    app.session_state["metis_token"] = "signed-token"
+    with patch("api_client.urlopen", side_effect=backend_response):
+        app.run()
+        app.sidebar.radio[0].set_value("Chat")
+        app.run()
+        app.chat_input[0].set_value("What does the policy say?")
+        app.run()
+
+    assert not app.exception
+    assert any("Progress: retrieval runs first" in item.value for item in app.caption)
 
 
 def test_settings_page_lists_organisation_members():

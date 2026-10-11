@@ -11,7 +11,18 @@
       "notify",
       "ticket"
     ],
-    "citations": 2
+    "citations": 2,
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Policy Runbook"
+    ],
+    "supporting_chunks": [
+      "policy-runbook-chunk-1",
+      "policy-runbook-chunk-2"
+    ],
+    "expected_answer": "notify; ticket",
+    "source": "Synthetic QA library"
   },
   {
     "id": "payslip-difference",
@@ -24,7 +35,18 @@
     "claims": [
       "100.15"
     ],
-    "citations": 2
+    "citations": 2,
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Payslip Difference"
+    ],
+    "supporting_chunks": [
+      "payslip-difference-chunk-1",
+      "payslip-difference-chunk-2"
+    ],
+    "expected_answer": "100.15",
+    "source": "Synthetic QA library"
   },
   {
     "id": "conflict",
@@ -41,7 +63,18 @@
       "7",
       "30"
     ],
-    "citations": 2
+    "citations": 2,
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Conflict"
+    ],
+    "supporting_chunks": [
+      "conflict-chunk-1",
+      "conflict-chunk-2"
+    ],
+    "expected_answer": "7; 30",
+    "source": "Synthetic QA library"
   },
   {
     "id": "ambiguous-pay",
@@ -52,7 +85,18 @@
     ],
     "outcome": "clarification_needed",
     "claims": [],
-    "citations": 0
+    "citations": 0,
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Ambiguous Pay"
+    ],
+    "supporting_chunks": [
+      "ambiguous-pay-chunk-1",
+      "ambiguous-pay-chunk-2"
+    ],
+    "expected_answer": "clarification_needed",
+    "source": "Synthetic QA library"
   },
   {
     "id": "injection",
@@ -64,7 +108,20 @@
     "claims": [
       "12"
     ],
-    "citations": 1
+    "forbidden_claims": [
+      "99 years"
+    ],
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Injection"
+    ],
+    "supporting_chunks": [
+      "injection-chunk-1"
+    ],
+    "expected_answer": "12",
+    "source": "Synthetic QA library"
   },
   {
     "id": "partial",
@@ -76,7 +133,17 @@
     "claims": [
       "IR-7"
     ],
-    "citations": 1
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Partial"
+    ],
+    "supporting_chunks": [
+      "partial-chunk-1"
+    ],
+    "expected_answer": "IR-7",
+    "source": "Synthetic QA library"
   },
   {
     "id": "insufficient",
@@ -86,7 +153,17 @@
     ],
     "outcome": "insufficient_evidence",
     "claims": [],
-    "citations": 0
+    "citations": 0,
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Insufficient"
+    ],
+    "supporting_chunks": [
+      "insufficient-chunk-1"
+    ],
+    "expected_answer": "insufficient_evidence",
+    "source": "Synthetic QA library"
   },
   {
     "id": "complete-guard",
@@ -98,7 +175,17 @@
     "claims": [
       "sample"
     ],
-    "citations": 0
+    "citations": 0,
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Complete Guard"
+    ],
+    "supporting_chunks": [
+      "complete-guard-chunk-1"
+    ],
+    "expected_answer": "sample",
+    "source": "Synthetic QA library"
   },
   {
     "id": "followup-last-month",
@@ -118,6 +205,943 @@
       "January",
       "2000.10"
     ],
-    "citations": 1
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Followup Last Month"
+    ],
+    "supporting_chunks": [
+      "followup-last-month-chunk-1",
+      "followup-last-month-chunk-2"
+    ],
+    "expected_answer": "January; 2000.10",
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-01-incident",
+    "question": "Can you clarify that policy?",
+    "texts": [
+      "Reference notes. Safety incidents must be reported to the duty manager.\n\nOperational details follow. See the stated rule: Safety incidents must be reported to the duty manager."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "duty manager"
+    ],
+    "expected_answer": "duty manager",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Synthetic Incident"
+    ],
+    "supporting_chunks": [
+      "synthetic-01-incident-chunk-1"
+    ],
+    "history": [
+      [
+        "user",
+        "Tell me about the relevant policy."
+      ]
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-02-leave",
+    "question": "How early should annual leave be requested?",
+    "texts": [
+      "Annual leave requests need manager approval fourteen days before absence."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "fourteen days"
+    ],
+    "expected_answer": "fourteen days",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Synthetic Leave"
+    ],
+    "supporting_chunks": [
+      "synthetic-02-leave-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-03-backup",
+    "question": "When do database backups run?",
+    "texts": [
+      "Database backups run nightly."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "nightly"
+    ],
+    "expected_answer": "nightly",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Synthetic Backup"
+    ],
+    "supporting_chunks": [
+      "synthetic-03-backup-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-04-invoice",
+    "question": "What is the due date for invoice INV-2047?",
+    "texts": [
+      "Invoice INV-2047 is due on 21 February 2026."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "21 February 2026"
+    ],
+    "expected_answer": "21 February 2026",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Synthetic Invoice"
+    ],
+    "supporting_chunks": [
+      "synthetic-04-invoice-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-05-training",
+    "question": "When should safety induction be completed?",
+    "texts": [
+      "Safety induction must be completed in the first week."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "first week"
+    ],
+    "expected_answer": "first week",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Synthetic Training"
+    ],
+    "supporting_chunks": [
+      "synthetic-05-training-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-06-parking",
+    "question": "Where are staff parking permits issued?",
+    "texts": [
+      "Reception issues staff parking permits."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "Reception"
+    ],
+    "expected_answer": "Reception",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Synthetic Parking"
+    ],
+    "supporting_chunks": [
+      "synthetic-06-parking-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-07-expense",
+    "question": "What is the expense claim deadline?",
+    "texts": [
+      "Submit expense receipts by the fifth working day of the next month."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "fifth working day"
+    ],
+    "expected_answer": "fifth working day",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Synthetic Expense"
+    ],
+    "supporting_chunks": [
+      "synthetic-07-expense-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-08-password",
+    "question": "How long must a password be?",
+    "texts": [
+      "Account passwords require at least fourteen characters."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "fourteen characters"
+    ],
+    "expected_answer": "fourteen characters",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Synthetic Password"
+    ],
+    "supporting_chunks": [
+      "synthetic-08-password-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-09-delivery",
+    "question": "Where should parcels be delivered?",
+    "texts": [
+      "Incoming parcels go to the rear loading dock."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "rear loading dock"
+    ],
+    "expected_answer": "rear loading dock",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Synthetic Delivery"
+    ],
+    "supporting_chunks": [
+      "synthetic-09-delivery-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-10-remote",
+    "question": "How many weekly remote days are permitted?",
+    "texts": [
+      "Reference notes. Remote work is permitted two days each week with team leader approval.\n\nOperational details follow. See the stated rule: Remote work is permitted two days each week with team leader approval."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "two days"
+    ],
+    "expected_answer": "two days",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Synthetic Remote"
+    ],
+    "supporting_chunks": [
+      "synthetic-10-remote-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-11-refund",
+    "question": "How long does a customer have to request a refund?",
+    "texts": [
+      "Customers may request a refund within thirty days with the original receipt."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "thirty days"
+    ],
+    "expected_answer": "thirty days",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Synthetic Refund"
+    ],
+    "supporting_chunks": [
+      "synthetic-11-refund-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-12-roster",
+    "question": "Can you clarify that policy?",
+    "texts": [
+      "The roster is published each Thursday afternoon."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "Thursday afternoon"
+    ],
+    "expected_answer": "Thursday afternoon",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Synthetic Roster"
+    ],
+    "supporting_chunks": [
+      "synthetic-12-roster-chunk-1"
+    ],
+    "history": [
+      [
+        "user",
+        "Tell me about the relevant policy."
+      ]
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-13-vpn",
+    "question": "What is required for remote network access?",
+    "texts": [
+      "Use the approved VPN client and complete the second-factor challenge."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "second-factor"
+    ],
+    "expected_answer": "second-factor",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Synthetic Vpn"
+    ],
+    "supporting_chunks": [
+      "synthetic-13-vpn-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-14-supplier",
+    "question": "Which supplier provides gloves?",
+    "texts": [
+      "ACME-482 supplies nitrile examination gloves."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "ACME-482"
+    ],
+    "expected_answer": "ACME-482",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Synthetic Supplier"
+    ],
+    "supporting_chunks": [
+      "synthetic-14-supplier-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-15-emergency",
+    "question": "What should staff do in a life-threatening emergency?",
+    "texts": [
+      "Call emergency services immediately, then notify the duty manager."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "emergency services"
+    ],
+    "expected_answer": "emergency services",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Synthetic Emergency"
+    ],
+    "supporting_chunks": [
+      "synthetic-15-emergency-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-16-retention",
+    "question": "How long are customer records retained?",
+    "texts": [
+      "Customer records are retained for seven years after account closure."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "seven years"
+    ],
+    "expected_answer": "seven years",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Synthetic Retention"
+    ],
+    "supporting_chunks": [
+      "synthetic-16-retention-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-17-meeting",
+    "question": "When is the monthly operations review?",
+    "texts": [
+      "The operations review is on the first Monday at 10am."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "first Monday"
+    ],
+    "expected_answer": "first Monday",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Synthetic Meeting"
+    ],
+    "supporting_chunks": [
+      "synthetic-17-meeting-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-18-overtime",
+    "question": "What rate applies to approved overtime?",
+    "texts": [
+      "Approved overtime is paid at one and a half times the ordinary rate."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "one and a half"
+    ],
+    "expected_answer": "one and a half",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Synthetic Overtime"
+    ],
+    "supporting_chunks": [
+      "synthetic-18-overtime-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-19-sick",
+    "question": "When is a medical certificate required?",
+    "texts": [
+      "Reference notes. A medical certificate is required after two consecutive sick days.\n\nOperational details follow. See the stated rule: A medical certificate is required after two consecutive sick days."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "two consecutive days"
+    ],
+    "expected_answer": "two consecutive days",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Synthetic Sick"
+    ],
+    "supporting_chunks": [
+      "synthetic-19-sick-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-20-travel",
+    "question": "When must business travel be approved?",
+    "texts": [
+      "Business travel requires approval before booking."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "before booking"
+    ],
+    "expected_answer": "before booking",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Synthetic Travel"
+    ],
+    "supporting_chunks": [
+      "synthetic-20-travel-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-21-equipment",
+    "question": "What happens to faulty equipment?",
+    "texts": [
+      "Faulty equipment must be isolated and reported to facilities."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "isolated"
+    ],
+    "expected_answer": "isolated",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Synthetic Equipment"
+    ],
+    "supporting_chunks": [
+      "synthetic-21-equipment-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-22-incident",
+    "question": "Who must be notified after a safety incident?",
+    "texts": [
+      "Safety incidents must be reported to the duty manager."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "duty manager"
+    ],
+    "expected_answer": "duty manager",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Synthetic Incident"
+    ],
+    "supporting_chunks": [
+      "synthetic-22-incident-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-23-leave",
+    "question": "Can you clarify that policy?",
+    "texts": [
+      "Annual leave requests need manager approval fourteen days before absence."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "fourteen days"
+    ],
+    "expected_answer": "fourteen days",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Synthetic Leave"
+    ],
+    "supporting_chunks": [
+      "synthetic-23-leave-chunk-1"
+    ],
+    "history": [
+      [
+        "user",
+        "Tell me about the relevant policy."
+      ]
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-24-backup",
+    "question": "When do database backups run?",
+    "texts": [
+      "Database backups run nightly."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "nightly"
+    ],
+    "expected_answer": "nightly",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Synthetic Backup"
+    ],
+    "supporting_chunks": [
+      "synthetic-24-backup-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-25-invoice",
+    "question": "What is the due date for invoice INV-2047?",
+    "texts": [
+      "Invoice INV-2047 is due on 21 February 2026."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "21 February 2026"
+    ],
+    "expected_answer": "21 February 2026",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Synthetic Invoice"
+    ],
+    "supporting_chunks": [
+      "synthetic-25-invoice-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-26-training",
+    "question": "When should safety induction be completed?",
+    "texts": [
+      "Safety induction must be completed in the first week."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "first week"
+    ],
+    "expected_answer": "first week",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Synthetic Training"
+    ],
+    "supporting_chunks": [
+      "synthetic-26-training-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-27-parking",
+    "question": "Where are staff parking permits issued?",
+    "texts": [
+      "Reception issues staff parking permits."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "Reception"
+    ],
+    "expected_answer": "Reception",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Synthetic Parking"
+    ],
+    "supporting_chunks": [
+      "synthetic-27-parking-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-28-expense",
+    "question": "What is the expense claim deadline?",
+    "texts": [
+      "Reference notes. Submit expense receipts by the fifth working day of the next month.\n\nOperational details follow. See the stated rule: Submit expense receipts by the fifth working day of the next month."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "fifth working day"
+    ],
+    "expected_answer": "fifth working day",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Synthetic Expense"
+    ],
+    "supporting_chunks": [
+      "synthetic-28-expense-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-29-password",
+    "question": "How long must a password be?",
+    "texts": [
+      "Account passwords require at least fourteen characters."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "fourteen characters"
+    ],
+    "expected_answer": "fourteen characters",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Synthetic Password"
+    ],
+    "supporting_chunks": [
+      "synthetic-29-password-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-30-delivery",
+    "question": "Where should parcels be delivered?",
+    "texts": [
+      "Incoming parcels go to the rear loading dock."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "rear loading dock"
+    ],
+    "expected_answer": "rear loading dock",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Synthetic Delivery"
+    ],
+    "supporting_chunks": [
+      "synthetic-30-delivery-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-31-remote",
+    "question": "How many weekly remote days are permitted?",
+    "texts": [
+      "Remote work is permitted two days each week with team leader approval."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "two days"
+    ],
+    "expected_answer": "two days",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Synthetic Remote"
+    ],
+    "supporting_chunks": [
+      "synthetic-31-remote-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-32-refund",
+    "question": "How long does a customer have to request a refund?",
+    "texts": [
+      "Customers may request a refund within thirty days with the original receipt."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "thirty days"
+    ],
+    "expected_answer": "thirty days",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Synthetic Refund"
+    ],
+    "supporting_chunks": [
+      "synthetic-32-refund-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-33-roster",
+    "question": "When is the next fortnight roster published?",
+    "texts": [
+      "The roster is published each Thursday afternoon."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "Thursday afternoon"
+    ],
+    "expected_answer": "Thursday afternoon",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Synthetic Roster"
+    ],
+    "supporting_chunks": [
+      "synthetic-33-roster-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-34-vpn",
+    "question": "Can you clarify that policy?",
+    "texts": [
+      "Use the approved VPN client and complete the second-factor challenge."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "second-factor"
+    ],
+    "expected_answer": "second-factor",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Synthetic Vpn"
+    ],
+    "supporting_chunks": [
+      "synthetic-34-vpn-chunk-1"
+    ],
+    "history": [
+      [
+        "user",
+        "Tell me about the relevant policy."
+      ]
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-35-supplier",
+    "question": "Which supplier provides gloves?",
+    "texts": [
+      "ACME-482 supplies nitrile examination gloves."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "ACME-482"
+    ],
+    "expected_answer": "ACME-482",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Synthetic Supplier"
+    ],
+    "supporting_chunks": [
+      "synthetic-35-supplier-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-36-emergency",
+    "question": "What should staff do in a life-threatening emergency?",
+    "texts": [
+      "Call emergency services immediately, then notify the duty manager."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "emergency services"
+    ],
+    "expected_answer": "emergency services",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Synthetic Emergency"
+    ],
+    "supporting_chunks": [
+      "synthetic-36-emergency-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-37-retention",
+    "question": "How long are customer records retained?",
+    "texts": [
+      "Reference notes. Customer records are retained for seven years after account closure.\n\nOperational details follow. See the stated rule: Customer records are retained for seven years after account closure."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "seven years"
+    ],
+    "expected_answer": "seven years",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "markdown",
+    "supporting_sections": [
+      "Synthetic Retention"
+    ],
+    "supporting_chunks": [
+      "synthetic-37-retention-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-38-meeting",
+    "question": "When is the monthly operations review?",
+    "texts": [
+      "The operations review is on the first Monday at 10am."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "first Monday"
+    ],
+    "expected_answer": "first Monday",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "csv",
+    "supporting_sections": [
+      "Synthetic Meeting"
+    ],
+    "supporting_chunks": [
+      "synthetic-38-meeting-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-39-overtime",
+    "question": "What rate applies to approved overtime?",
+    "texts": [
+      "Approved overtime is paid at one and a half times the ordinary rate."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "one and a half"
+    ],
+    "expected_answer": "one and a half",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "docx",
+    "supporting_sections": [
+      "Synthetic Overtime"
+    ],
+    "supporting_chunks": [
+      "synthetic-39-overtime-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-40-sick",
+    "question": "When is a medical certificate required?",
+    "texts": [
+      "A medical certificate is required after two consecutive sick days."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "two consecutive days"
+    ],
+    "expected_answer": "two consecutive days",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "pdf",
+    "supporting_sections": [
+      "Synthetic Sick"
+    ],
+    "supporting_chunks": [
+      "synthetic-40-sick-chunk-1"
+    ],
+    "source": "Synthetic QA library"
+  },
+  {
+    "id": "synthetic-41-travel",
+    "question": "When must business travel be approved?",
+    "texts": [
+      "Business travel requires approval before booking."
+    ],
+    "outcome": "answered",
+    "claims": [
+      "before booking"
+    ],
+    "expected_answer": "before booking",
+    "citations": 1,
+    "source_version": "synthetic-v1",
+    "format": "txt",
+    "supporting_sections": [
+      "Synthetic Travel"
+    ],
+    "supporting_chunks": [
+      "synthetic-41-travel-chunk-1"
+    ],
+    "source": "Synthetic QA library"
   }
 ]

@@ -715,6 +715,13 @@ def render_document_detail(organisation_id: str, token: str, role: str) -> None:
             st.caption(detail["readiness"])
             st.write(f"Status: {status_label(document['ingestion_status'])}")
             st.write(f"Pages: {detail['page_count']} · Chunks: {detail['chunk_count']}")
+            if role in {"owner", "admin"}:
+                st.caption(
+                    f"Extracted characters: {detail.get('extracted_characters', 0)} · "
+                    f"Blank pages: {detail.get('blank_page_count', 0)}"
+                )
+                for warning in detail.get("parsing_warnings", []):
+                    st.warning(warning)
             st.caption(
                 f"Source: {document['source_id']} · Version: {document['current_version_id']}"
             )
@@ -730,11 +737,13 @@ def render_document_detail(organisation_id: str, token: str, role: str) -> None:
                 )
                 if detail.get("versions_truncated"):
                     st.caption("Showing the latest 50 stored versions.")
-            st.text(
-                detail["extraction_preview"] or "No extracted text is available yet."
-            )
-            if detail["preview_truncated"]:
-                st.caption("Preview shows the first 4,000 characters.")
+            if role in {"owner", "admin"}:
+                st.text(
+                    detail["extraction_preview"]
+                    or "No extracted text is available yet."
+                )
+                if detail["preview_truncated"]:
+                    st.caption("Preview shows the first 4,000 characters.")
             if role in {"owner", "admin"}:
                 with st.form(f"replace_document_{document_id}"):
                     replacement = st.file_uploader(
@@ -804,6 +813,7 @@ def render_citations(
     organisation_id: str | None = None,
     token: str | None = None,
     key_prefix: str = "",
+    role: str = "member",
 ) -> None:
     if not citations:
         st.caption("No supporting document sources were returned.")
@@ -825,6 +835,11 @@ def render_citations(
                 st.caption("Version · " + citation["document_version_id"])
             if citation.get("source_modified_at"):
                 st.caption("Source modified · " + citation["source_modified_at"])
+            if citation.get("source_freshness"):
+                st.caption(
+                    "Source freshness · "
+                    + citation["source_freshness"].replace("_", " ").title()
+                )
             if citation.get("source_type") == "microsoft365":
                 status = citation.get("source_sync_status", "unknown")
                 st.caption(
@@ -844,6 +859,31 @@ def render_citations(
                         f"Library synchronization is {status}. This evidence is the stored snapshot; it may be out of date."
                     )
             st.write(citation.get("snippet", ""))
+            if organisation_id and token and role in {"owner", "admin"}:
+                preview_key = (
+                    f"{key_prefix}_preview_{citation['document_id']}_"
+                    f"{citation.get('document_version_id', 'current')}"
+                )
+                preview_data_key = preview_key + "_data"
+                if st.button("Preview extracted text", key=preview_key + "_button"):
+                    try:
+                        st.session_state[preview_data_key] = api.request(
+                            "GET",
+                            f"/api/organisations/{organisation_id}/documents/"
+                            f"{citation['document_id']}/detail",
+                            token=token,
+                        )
+                    except ApiError as error:
+                        show_api_error(error)
+                preview = st.session_state.get(preview_data_key)
+                if preview:
+                    st.caption(
+                        "Read-only extracted text preview (up to 4,000 characters)"
+                    )
+                    if preview.get("extraction_preview"):
+                        st.text(preview["extraction_preview"])
+                    else:
+                        st.info("No extracted text is available for this document.")
             version = citation.get("document_version_id")
             if (
                 organisation_id
@@ -878,9 +918,43 @@ def render_citations(
                 st.link_button("Open source document", source_url)
 
 
-def render_chat(organisation_id: str, token: str) -> None:
+def render_related_passages(passages: list[dict]) -> None:
+    if not passages:
+        return
+    with st.expander(f"Related retrieved passages · {len(passages)}"):
+        for index, passage in enumerate(passages, start=1):
+            title = passage.get("document_title", "Source document")
+            with st.expander(f"{index}. {title}"):
+                location = []
+                if passage.get("page") is not None:
+                    location.append(f"Page {passage['page']}")
+                if passage.get("section"):
+                    location.append(passage["section"])
+                if passage.get("source_name"):
+                    location.insert(0, passage["source_name"])
+                if location:
+                    st.caption(" · ".join(location))
+                st.write(passage.get("snippet", ""))
+                source_url = passage.get("source_url")
+                try:
+                    source_link = urlsplit(source_url or "")
+                except ValueError:
+                    source_link = urlsplit("")
+                if source_link.scheme in {"http", "https"} and source_link.netloc:
+                    st.link_button(
+                        "Open source document",
+                        source_url,
+                        key=f"related_source_{passage.get('chunk_id', index)}",
+                    )
+
+
+def render_chat(organisation_id: str, token: str, role: str) -> None:
     st.title("Chat")
     st.caption("Ask a question and review the documents behind each answer.")
+    st.caption(
+        "Progress: retrieval runs first; answer generation follows only when the "
+        "evidence supports a response."
+    )
     if st.session_state.get("metis_chat_org") != organisation_id:
         st.session_state["metis_chat_org"] = organisation_id
         st.session_state.pop("metis_pending_chat", None)
@@ -907,6 +981,12 @@ def render_chat(organisation_id: str, token: str) -> None:
             st.session_state["metis_chat_messages"] = []
             return
         st.session_state["metis_chat_messages"] = refreshed["messages"]
+        related_by_message = st.session_state.get(
+            f"related_passages_{organisation_id}", {}
+        )
+        for message in st.session_state["metis_chat_messages"]:
+            if message.get("id") in related_by_message:
+                message["related_passages"] = related_by_message[message["id"]]
     st.caption(
         "Conversations are visible to their creator and organisation owners/admins."
     )
@@ -984,6 +1064,24 @@ def render_chat(organisation_id: str, token: str) -> None:
     )
     if documents is None:
         return
+    failed_documents = [
+        item for item in documents if item.get("ingestion_status") == "failed"
+    ]
+    processing_documents = [
+        item
+        for item in documents
+        if item.get("ingestion_status") in {"pending", "queued", "processing"}
+    ]
+    if failed_documents:
+        st.warning(
+            f"{len(failed_documents)} document(s) failed indexing. Open Knowledge "
+            "to review the error or ask an administrator to retry ingestion."
+        )
+    if processing_documents:
+        st.info(
+            f"{len(processing_documents)} document(s) are still being indexed. "
+            "Check back after processing finishes."
+        )
     ready_documents = {
         item["id"]: item
         for item in documents
@@ -1006,6 +1104,11 @@ def render_chat(organisation_id: str, token: str) -> None:
         help="Choose a document to ask directly about its contents, such as a payslip's net payment.",
     )
     if document_id is not None:
+        selected_document = ready_documents[document_id]
+        if selected_document.get("ingestion_status") != "indexed":
+            st.warning(
+                "This source is unavailable or not indexed. Remove the filter or ask an administrator to check its indexing status."
+            )
         st.caption(
             "Answers will use only this document. Start a new conversation when changing topics."
         )
@@ -1093,6 +1196,16 @@ def render_chat(organisation_id: str, token: str) -> None:
             }.get(message.get("outcome"))
             if outcome_label:
                 st.caption(outcome_label)
+            if message.get("outcome") == "insufficient_evidence":
+                st.info(
+                    "Try a narrower question, check the selected sources, or ask an "
+                    "administrator whether the documents are indexed."
+                )
+            elif message.get("outcome") == "partially_answered":
+                st.info(
+                    "Some parts were not supported by the retrieved evidence. "
+                    "Narrow the question or reveal related passages below."
+                )
             st.markdown(message["content"])
             if message.get("citations") is not None:
                 render_citations(
@@ -1100,7 +1213,10 @@ def render_chat(organisation_id: str, token: str) -> None:
                     organisation_id,
                     token,
                     key_prefix=f"chat_{message_index}",
+                    role=role,
                 )
+            if message.get("outcome") == "partially_answered":
+                render_related_passages(message.get("related_passages", []))
 
             if message.get("id") and message["role"] == "assistant":
                 with st.form(f"feedback_{message['id']}"):
@@ -1167,24 +1283,57 @@ def render_chat(organisation_id: str, token: str) -> None:
             }
         st.session_state["metis_pending_chat"] = pending
         try:
-            with st.spinner("Searching knowledge and preparing an answer…"):
+            with st.status(
+                "Retrieving evidence…",
+                expanded=True,
+            ) as progress:
+                st.write(
+                    "Retrieval runs first. Answer generation follows only when the "
+                    "evidence supports a response."
+                )
                 response = api.request(
                     "POST",
                     f"/api/organisations/{organisation_id}/chat",
                     token=token,
                     payload=pending,
                 )
+                progress.update(
+                    label="Answer ready",
+                    state="complete",
+                )
         except ApiError as error:
             if error.status_code == 401:
                 show_api_error(error)
             else:
-                st.session_state["metis_chat_error"] = error.detail
+                if error.status_code == 404:
+                    message = (
+                        "A selected source or conversation is unavailable. Remove "
+                        "the unavailable filter and try again."
+                    )
+                elif error.status_code == 409 and "index" in error.detail.lower():
+                    message = (
+                        "Knowledge indexing is in progress or needs attention. "
+                        "Refresh later or ask an administrator to check indexing status."
+                    )
+                elif error.status_code == 503:
+                    message = (
+                        "The embedding or answer provider is unavailable. Try again "
+                        "later; an administrator can check provider configuration."
+                    )
+                else:
+                    message = error.detail
+                st.session_state["metis_chat_error"] = message
                 st.rerun()
         else:
             st.session_state.pop("metis_pending_chat", None)
             st.session_state.pop("metis_chat_error", None)
             st.session_state.pop("metis_retry_text", None)
             st.session_state["metis_chat_id"] = response["conversation_id"]
+            related_passages = response.get("related_passages", [])
+            if response.get("message_id") and related_passages:
+                st.session_state.setdefault(f"related_passages_{organisation_id}", {})[
+                    response["message_id"]
+                ] = related_passages
             st.session_state.setdefault("metis_chat_messages", []).extend(
                 [
                     {"role": "user", "content": prompt},
@@ -1194,6 +1343,7 @@ def render_chat(organisation_id: str, token: str) -> None:
                         "content": response["answer"],
                         "outcome": response.get("outcome", "answered"),
                         "citations": response.get("citations", []),
+                        "related_passages": related_passages,
                     },
                 ]
             )
@@ -1314,7 +1464,7 @@ def main() -> None:
     elif page == "Knowledge":
         render_knowledge(organisation_id, token, membership["role"], documents)
     elif page == "Chat":
-        render_chat(organisation_id, token)
+        render_chat(organisation_id, token, membership["role"])
     else:
         render_settings(organisation, membership["role"], token)
 

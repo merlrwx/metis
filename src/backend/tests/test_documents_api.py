@@ -151,14 +151,38 @@ def test_document_detail_is_bounded_and_tenant_scoped(monkeypatch, tmp_path):
             DocumentVersion, UUID(upload["document"]["current_version_id"])
         )
         version.extracted_text = "x" * 5000
-        version.extraction_metadata = {"pages": [{"page": 1, "start": 0, "end": 5000}]}
+        version.extraction_metadata = {
+            "pages": [{"page": 1, "start": 0, "end": 5000}],
+            "warnings": ["Some content could not be parsed."],
+        }
         session.commit()
     detail = client.get(path).json()
     assert len(detail["extraction_preview"]) == 4000
     assert detail["preview_truncated"] is True
     assert detail["page_count"] == 1
+    assert detail["extracted_characters"] == 5000
+    assert detail["blank_page_count"] == 0
+    assert detail["parsing_warnings"] == ["Some content could not be parsed."]
     assert detail["versions"][0]["current"] is True
     assert "object_key" not in detail["versions"][0]
+
+    from backend.models import OrganisationMembership
+
+    from backend import database
+
+    with database.SessionLocal() as session:
+        membership = (
+            session.query(OrganisationMembership)
+            .filter_by(organisation_id=UUID(org))
+            .one()
+        )
+        membership.role = "member"
+        session.commit()
+    member_detail = client.get(path).json()
+    assert member_detail["extraction_preview"] == ""
+    assert member_detail["extracted_characters"] is None
+    assert member_detail["blank_page_count"] is None
+    assert member_detail["parsing_warnings"] == []
 
 
 def test_document_rename_keeps_original_identity_and_checks_scope(

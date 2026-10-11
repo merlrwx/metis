@@ -209,7 +209,7 @@ class SearchRequest(KnowledgeScope):
     query: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
     ]
-    limit: int = Field(default=5, ge=1, le=20)
+    limit: int = Field(default=8, ge=1, le=20)
 
 
 class SearchResultView(BaseModel):
@@ -238,7 +238,7 @@ class ChatRequest(KnowledgeScope):
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
     ]
     conversation_id: uuid.UUID | None = None
-    top_k: int = Field(default=5, ge=1, le=20)
+    top_k: int = Field(default=8, ge=1, le=20)
 
 
 class CitationView(BaseModel):
@@ -275,6 +275,7 @@ class ChatResponse(BaseModel):
     conversation_id: uuid.UUID
     answer: str
     citations: list[CitationView]
+    related_passages: list[CitationView] = Field(default_factory=list)
     model_id: str | None
     usage: ChatUsageView
 

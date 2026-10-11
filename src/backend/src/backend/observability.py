@@ -19,11 +19,40 @@ PIPELINE_EVENTS = Counter(
 ANSWER_OUTCOMES = Counter(
     "metis_answer_outcomes_total", "Grounded answer outcomes", ["outcome"]
 )
+ANSWER_FAILURES = Counter(
+    "metis_answer_failures_total",
+    "Answer request failures before an answer was recorded",
+    ["failure"],
+)
+RAG_REPAIRS = Counter("metis_rag_repairs_total", "Bounded answer format repairs")
+RETRIEVAL_HITS = Histogram(
+    "metis_retrieval_hits",
+    "Retrieved candidate count per query",
+    buckets=(0, 1, 2, 5, 10, 20, 40, 80, 200),
+)
+RETRIEVAL_QUALITY = Histogram(
+    "metis_retrieval_top_score",
+    "Top retrieval relevance score per query",
+    buckets=(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1),
+)
 
 LATENCY_BUCKETS = (0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300)
 
 request_id = ContextVar("request_id", default="")
 logger = logging.getLogger("metis")
+
+
+def diagnostics_enabled() -> bool:
+    """Restricted per-request diagnostics are disabled unless explicitly opted in."""
+    return os.environ.get("METIS_DIAGNOSTICS_ENABLED") == "true"
+
+
+def diagnostic_event(event: str, **fields) -> None:
+    """Emit metadata-only diagnostic events; never pass prompts or source text."""
+    if diagnostics_enabled():
+        log_event(f"diagnostic_{event}", **fields)
+
+
 REQUESTS = Counter(
     "metis_requests_total", "API requests", ["method", "route", "status"]
 )
