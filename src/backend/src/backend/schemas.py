@@ -275,6 +275,7 @@ class ChatResponse(BaseModel):
     conversation_id: uuid.UUID
     answer: str
     citations: list[CitationView]
+    related_passages: list[CitationView] = Field(default_factory=list)
     model_id: str | None
     usage: ChatUsageView
 

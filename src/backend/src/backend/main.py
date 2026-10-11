@@ -1355,6 +1355,18 @@ def chat_with_knowledge(
         response.citations = conversations.refresh_citation_sources(
             session, organisation_id, response.citations
         )
+        if not conversations.citations_available(
+            session,
+            organisation_id,
+            [passage.model_dump(mode="json") for passage in response.related_passages],
+            source_ids,
+            document_ids,
+        ):
+            response.related_passages = []
+        else:
+            response.related_passages = conversations.refresh_citation_sources(
+                session, organisation_id, response.related_passages
+            )
         return response
     request_limits.enforce(organisation_id, actor.user_id, "chat")
     history = (
@@ -1377,6 +1389,7 @@ def chat_with_knowledge(
             # Rewriting is optional; deterministic fallback remains available.
             pass
     retrieval_query = followups.resolve(payload.message, history, rewrite_provider)
+    hits = []
     if retrieval_query is None:
         grounded = rag.GroundedAnswer(
             "Which document, topic or pay period does your follow-up refer to?",
@@ -1481,7 +1494,11 @@ def chat_with_knowledge(
                 status_code=503, detail="Chat provider is unavailable"
             ) from error
 
-    citations = [citation_view(hit) for hit in grounded.citations]
+    citations = conversations.refresh_citation_sources(
+        session,
+        organisation_id,
+        [citation_view(hit) for hit in grounded.citations],
+    )
     if not conversations.citations_available(
         session,
         organisation_id,
@@ -1496,6 +1513,27 @@ def chat_with_knowledge(
             "insufficient_evidence",
         )
         citations = []
+    cited_chunk_ids = {citation.chunk_id for citation in citations}
+    related_passages = (
+        [citation_view(hit) for hit in hits if hit.chunk.id not in cited_chunk_ids][
+            : payload.top_k
+        ]
+        if grounded.outcome == "partially_answered"
+        else []
+    )
+    related_passages = conversations.refresh_citation_sources(
+        session,
+        organisation_id,
+        related_passages,
+    )
+    if not conversations.citations_available(
+        session,
+        organisation_id,
+        [passage.model_dump(mode="json") for passage in related_passages],
+        source_ids,
+        document_ids,
+    ):
+        related_passages = []
     completion = grounded.completion
     try:
         conversations.save_turn(
@@ -1548,6 +1586,7 @@ def chat_with_knowledge(
         answer=grounded.content,
         outcome=grounded.outcome,
         citations=citations,
+        related_passages=related_passages,
         model_id=completion.model_id if completion else None,
         usage=ChatUsageView(
             input_tokens=completion.input_tokens if completion else None,
