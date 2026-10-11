@@ -52,6 +52,18 @@ class FakeChatProvider:
         return ChatCompletion(self.content, self.model_id, 12, 7)
 
 
+class SequenceChatProvider:
+    model_id = "test-chat-v1"
+
+    def __init__(self, *contents):
+        self.contents = list(contents)
+        self.messages = []
+
+    def generate(self, messages):
+        self.messages.append(messages)
+        return ChatCompletion(self.contents.pop(0), self.model_id, 12, 7)
+
+
 def hit(score=0.9):
     return SearchHit(
         chunk=SimpleNamespace(
@@ -246,7 +258,7 @@ def test_explicit_document_answers_payslip_question_despite_lexical_mismatch():
 
 
 def test_structured_outcomes_and_invalid_citations():
-    from backend.chat import ChatProviderError
+    from backend.chat import AnswerFormatError
 
     provider = FakeChatProvider(
         json.dumps(
@@ -271,11 +283,44 @@ def test_structured_outcomes_and_invalid_citations():
     provider.content = json.dumps(
         {"outcome": "answered", "answer": "Wrong source [C9]"}
     )
-    with pytest.raises(ChatProviderError):
+    with pytest.raises(AnswerFormatError):
         answer_question("Question", [], [hit()], provider)
     provider.content = json.dumps({"answer": "Missing required outcome [C1]"})
-    with pytest.raises(ChatProviderError):
+    with pytest.raises(AnswerFormatError):
         answer_question("Question", [], [hit()], provider)
+
+
+@pytest.mark.parametrize(
+    "bad_response",
+    [
+        "{broken json",
+        json.dumps({"answer": "Notify the supervisor [C1]"}),
+        json.dumps({"outcome": "answered", "answer": "Notify [C8]"}),
+    ],
+    ids=["malformed-json", "missing-field", "invalid-citation"],
+)
+def test_answer_format_repair_is_bounded_and_preserves_supported_answer(bad_response):
+    provider = SequenceChatProvider(
+        bad_response,
+        json.dumps({"outcome": "answered", "answer": "Notify the supervisor [C1]."}),
+    )
+
+    result = answer_question("What should I do?", [], [hit()], provider)
+
+    assert result.outcome == "answered"
+    assert result.content == "Notify the supervisor [C1]."
+    assert len(provider.messages) == 2
+    assert "Repair only the response format" in provider.messages[1][-1][1]
+
+
+def test_exhausted_format_repair_fails_as_format_not_missing_evidence():
+    from backend.chat import AnswerFormatError
+
+    provider = SequenceChatProvider("{broken", "still broken")
+    provider.requires_structured_answers = True
+    with pytest.raises(AnswerFormatError, match="one repair"):
+        answer_question("What should I do?", [], [hit()], provider)
+    assert len(provider.messages) == 2
 
 
 def test_exhaustive_question_requires_proven_coverage_before_model_call():

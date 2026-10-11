@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
-from backend.chat import get_chat_provider
-from backend.evaluation import failure_stage, provider_details
+from backend.chat import AnswerFormatError, ChatProviderError, get_chat_provider
+from backend.evaluation import answer_matches_case, failure_stage, provider_details
 from backend.services.knowledge import SearchHit
 from backend.services.rag import answer_question
 
@@ -45,23 +45,30 @@ def main():
             )
             for index, text in enumerate(case["texts"])
         ]
-        result = answer_question(
-            case["question"], case.get("history", []), hits, provider
-        )
-        outcomes = (
-            case["outcome"] if isinstance(case["outcome"], list) else [case["outcome"]]
-        )
-        passed = (
-            result.outcome in outcomes
-            and len(result.citations) >= case["citations"]
-            and all(
-                claim.casefold() in result.content.casefold()
-                for claim in case["claims"]
+        try:
+            result = answer_question(
+                case["question"], case.get("history", []), hits, provider
             )
-        )
+            failure_kind = (
+                "missing_evidence"
+                if result.outcome == "insufficient_evidence"
+                else "unsupported_answer"
+                if result.outcome == "partially_answered"
+                else None
+            )
+        except AnswerFormatError:
+            failure_kind = "format"
+            result = None
+        except ChatProviderError:
+            failure_kind = "provider"
+            result = None
+        passed = result is not None and answer_matches_case(case, result)
+        if not passed and result is not None and failure_kind is None:
+            failure_kind = "unsupported_answer"
         row = {
             "case": case["id"],
             "passed": passed,
+            "failure_kind": failure_kind if not passed else None,
             "failure_stage": failure_stage(
                 expected_retrieved=True, expected_supplied=True
             )
@@ -70,9 +77,9 @@ def main():
             "extraction_availability": "synthetic_excerpts_supplied",
             "index_readiness": "not_required_for_answer_only_evaluation",
             "reindex_readiness": "not_required_for_answer_only_evaluation",
-            "outcome": result.outcome,
-            "answer": result.content,
-            "citations": len(result.citations),
+            "outcome": result.outcome if result else None,
+            "answer": result.content if result else None,
+            "citations": len(result.citations) if result else 0,
             **provider_details(embedding, provider),
         }
         print(json.dumps(row), flush=True)

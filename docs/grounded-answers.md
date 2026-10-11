@@ -1,11 +1,14 @@
 # Grounded answers
 
-Chat returns one of four answer outcomes: `answered`, `partially_answered`,
+Chat uses the versioned `grounded-answer-v1` prompt hierarchy and returns one of four answer outcomes: `answered`, `partially_answered`,
 `clarification_needed` or `insufficient_evidence`. Provider/network failures remain
-HTTP 503 errors rather than becoming missing evidence. The live compatible model
-must return validated JSON fields. A local `<think>` preamble is removed before
-parsing. Invalid fields or out-of-scope citations are provider response errors.
-Legacy plain-text test adapters remain supported.
+HTTP 503 errors rather than becoming missing evidence. The canonical Pydantic
+response model validates provider JSON. Providers that support JSON schema receive
+native structured output; local OpenAI-compatible servers fall back to JSON mode
+and then ordinary chat completion. A local `<think>` preamble is removed before
+parsing. Malformed JSON, missing fields and invalid citation markers get one
+bounded repair attempt. Exhausted repairs are format errors, request failures are
+provider errors, and ungrounded answers become missing-evidence outcomes.
 
 Answers use only the current retrieved evidence. The prompt asks for both sides of
 comparisons and conflicts, specific clarification when period/net/gross/authority
@@ -42,5 +45,12 @@ Run the separate opt-in review with `METIS_LIVE_CHAT_EVAL_ENABLED=true`, an expl
 local `GPTMOCK_BASE_URL` and `mise run evaluate-answers`. It exercises generation
 against fixed synthetic excerpts, independently of the ingestion/retrieval evaluator.
 Normal CI uses deterministic protocol and operand checks, never a live model.
+The fixed synthetic excerpts in `tests/fixtures/answer_quality.json` are the
+common input for model comparisons. Compare supported-answer refusal rate,
+format/repair failure rate, unsupported-answer failures, citation validity and
+arithmetic correctness against those same cases; do not compare models using
+different retrieval results or live corpus evidence. The live evaluator emits
+`failure_kind` as `provider`, `format`, `missing_evidence` or
+`unsupported_answer` when a case fails.
 Review the printed synthetic claims against the fixture text; passing citation
 counts and phrase checks alone is not proof that every answer claim is supported.

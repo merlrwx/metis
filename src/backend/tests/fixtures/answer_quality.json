@@ -108,6 +108,9 @@
     "claims": [
       "12"
     ],
+    "forbidden_claims": [
+      "99 years"
+    ],
     "citations": 1,
     "source_version": "synthetic-v1",
     "format": "pdf",

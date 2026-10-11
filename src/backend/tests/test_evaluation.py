@@ -2,7 +2,31 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from backend.evaluation import failure_stage
+from backend.evaluation import answer_matches_case, failure_stage
+
+
+def test_fixed_evidence_answer_evaluation_rejects_unsupported_injected_claim():
+    from types import SimpleNamespace
+
+    case = {
+        "outcome": "answered",
+        "claims": ["12"],
+        "forbidden_claims": ["99 years"],
+        "citations": 1,
+    }
+    supported = SimpleNamespace(
+        outcome="answered", content="The warranty is 12 months [C1].", citations=[1]
+    )
+    injected = SimpleNamespace(
+        outcome="answered",
+        content="The warranty is 12 months [C1], or 99 years [C1].",
+        citations=[1],
+    )
+
+    assert answer_matches_case(case, supported)
+    assert not answer_matches_case(case, injected)
+
+
 from backend.evaluation_fixtures import build_synthetic_document
 from backend.services import ingestion
 
