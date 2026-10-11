@@ -331,6 +331,28 @@ def test_exhaustive_question_requires_proven_coverage_before_model_call():
     assert "sample" in result.content
 
 
+def test_summary_is_not_a_census_but_count_and_exhaustive_list_are():
+    from backend.services.rag import needs_complete_scope
+
+    assert not needs_complete_scope("Summarize all documents about leave")
+    assert needs_complete_scope("How many invoices are there?")
+    assert needs_complete_scope("List all documents")
+
+
+def test_census_requires_complete_evidence_after_context_budget(monkeypatch):
+    from backend.services import rag
+
+    monkeypatch.setattr(rag, "_fit_evidence_budget", lambda evidence, history: [])
+    provider = FakeChatProvider("There are 2 invoices [C1].")
+
+    result = answer_question(
+        "Count all invoices", [], [hit()], provider, complete_scope=True
+    )
+
+    assert result.outcome == "clarification_needed"
+    assert provider.messages is None
+
+
 def test_citations_are_renumbered_to_match_rendered_sources():
     first, second = hit(), hit()
     second.document.id = "second"

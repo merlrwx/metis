@@ -43,7 +43,7 @@ class AnswerPayload(BaseModel):
 def needs_complete_scope(question: str) -> bool:
     return bool(
         re.search(
-            r"\b(?:all|every)\s+(?:records?|payslips?|invoices?|documents?|payments?|entries|rows?)\b|\b(?:total|count|sum|average)\b",
+            r"\b(?:all|every)\s+(?:records?|payslips?|invoices?|payments?|entries|rows?)\b|\b(?:total|count|sum|average|how many)\b|\b(?:list|enumerate|show)\s+(?:me\s+)?all\s+documents?\b",
             question,
             re.IGNORECASE,
         )
@@ -136,10 +136,10 @@ def answer_question(
     document_ids: list[UUID] | None = None,
     complete_scope: bool = False,
 ) -> GroundedAnswer:
-    evidence = _fit_evidence_budget(
-        supporting_evidence(hits, document_id, document_ids), history
-    )
-    if needs_complete_scope(question) and not complete_scope:
+    supported = supporting_evidence(hits, document_id, document_ids)
+    evidence = _fit_evidence_budget(supported, history)
+    evidence_incomplete = len(evidence) < len(supported)
+    if needs_complete_scope(question) and (not complete_scope or evidence_incomplete):
         return GroundedAnswer(
             "I cannot establish a complete total or list from a sample of passages. Please narrow the source or document scope and period so I can check every indexed record within it.",
             [],
@@ -152,6 +152,12 @@ def answer_question(
         raise ValueError("A chat provider is required when supporting evidence exists")
 
     system_prompt = _grounded_prompt(evidence)
+    if evidence_incomplete:
+        system_prompt += (
+            "\nEvidence budget: some retrieved passages were omitted. Give a "
+            "supported partial answer when possible and name the specific missing "
+            "coverage; do not imply this is a complete summary or census."
+        )
     if complete_scope:
         system_prompt += "\nCoverage: these excerpts include every indexed chunk in the requested scope. Counts/totals must still identify units, periods and records from that evidence; do not count documents as records."
     messages = [("system", system_prompt)]

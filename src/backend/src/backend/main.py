@@ -1369,7 +1369,14 @@ def chat_with_knowledge(
         if conversation is not None
         else []
     )
-    retrieval_query = followups.rewrite(payload.message, history)
+    rewrite_provider = None
+    if followups.needs_model_rewrite(payload.message):
+        try:
+            rewrite_provider = chat.get_chat_provider()
+        except chat.ChatProviderError:
+            # Rewriting is optional; deterministic fallback remains available.
+            pass
+    retrieval_query = followups.resolve(payload.message, history, rewrite_provider)
     if retrieval_query is None:
         grounded = rag.GroundedAnswer(
             "Which document, topic or pay period does your follow-up refer to?",
