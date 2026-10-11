@@ -85,6 +85,10 @@ run = "uv run --locked --project src/backend python scripts/evaluate_answers.py"
 description = "Opt-in actual synthetic ingestion/retrieval/live ChatMock answer evaluation"
 run = "uv run --locked --project src/backend python scripts/evaluate_pipeline.py"
 
+[tasks.quality-report]
+description = "Summarize evaluation artifacts and compare quality categories with a prior report"
+run = "uv run --locked --project src/backend python scripts/quality_report.py"
+
 [tasks.local]
 description = "Start and check existing Metis DevPod, semantic services and local ChatMock forwarding"
 run = "bash scripts/local"

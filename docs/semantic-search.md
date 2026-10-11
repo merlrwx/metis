@@ -136,3 +136,36 @@ Run the opt-in retrieval evaluation only against an isolated, migrated PostgreSQ
 For a host process rather than the optional container, `mise run download-embeddings` installs the extra and downloads the same pinned model. Run `uv run --locked --project src/backend --extra semantic metis-embeddings` to serve it on loopback8003; avoid sharing that environment with concurrent dependency synchronization.
 
 References: [FastEmbed supported models](https://qdrant.github.io/fastembed/examples/Supported_Models/) and [pinned model repository](https://huggingface.co/qdrant/all-MiniLM-L6-v2-onnx/tree/d13954661f83248295ba75c1ed411eef3b7b936e).
+
+## Quality reports and rollout
+
+The retrieval and answer tuning corpora (`semantic_retrieval.json` and
+`answer_quality.json`) are separate from `heldout_semantic_retrieval.json` and
+`heldout_answer_quality.json`, which the opt-in retrieval, answer and pipeline
+reviews use. Keep held-out cases unchanged while selecting thresholds, prompts,
+embeddings or rerankers. Deterministic extraction, scope, citation, structured
+output and security regressions run in the regular backend tests and
+`scripts/verify`; they do not need model or database secrets.
+
+Run `mise run quality-report` after an evaluation to create
+`.agent/quality-report.json`. It records held-out fixture hashes, prompt and
+retrieval configuration, and summarizes supplied retrieval, answer and pipeline
+artifacts by failure category. Pass `--previous PATH` to compare case counts,
+passed cases and category counts with a prior quality report. A report with no
+measured input artifacts records configuration and fixture identity only; it
+does not claim quality targets have passed. The commands remain independently
+available as `mise run evaluate-retrieval`, `mise run evaluate-answers` and
+`mise run evaluate-pipeline`; all live model/database work is opt-in.
+
+Roll out extraction, embedding, retrieval and answer changes independently.
+First back up PostgreSQL metadata and original objects as described below. For
+extraction or embedding changes, stage the code/configuration, measure the same
+held-out corpus, reindex a canary organisation, and inspect extraction
+availability, index readiness, retrieval categories and answer citations before
+expanding. Retain the prior image/configuration and matching database/object
+backup until acceptance. To roll back, restore the prior code/configuration and
+restore the matching metadata and original-object backup into an isolated
+recovery environment; if embeddings changed, reindex with the prior pinned model
+before returning that corpus to service. Never mix vectors from different model
+spaces. Prompt/model-only answer changes do not require reindexing; evaluate and
+roll them back independently.

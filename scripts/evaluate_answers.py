@@ -23,11 +23,12 @@ def main():
     cases = json.loads(
         (
             Path(__file__).resolve().parents[1]
-            / "src/backend/tests/fixtures/answer_quality.json"
+            / "src/backend/tests/fixtures/heldout_answer_quality.json"
         ).read_text()
     )
     provider = get_chat_provider()
     failures = []
+    report = []
     embedding = embeddings.get_embedding_provider()
     for case in cases:
         hits = [
@@ -83,10 +84,29 @@ def main():
             **provider_details(embedding, provider),
         }
         print(json.dumps(row), flush=True)
+        report.append(row)
         if not passed:
             failures.append(case["id"])
     if failures:
+        output = Path(
+            os.environ.get("METIS_ANSWER_EVAL_OUTPUT", ".agent/answer-evaluation.json")
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(
+                {**provider_details(embedding, provider), "cases": report}, indent=2
+            )
+            + "\n"
+        )
         raise SystemExit(f"Review failed synthetic cases: {failures}")
+    output = Path(
+        os.environ.get("METIS_ANSWER_EVAL_OUTPUT", ".agent/answer-evaluation.json")
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps({**provider_details(embedding, provider), "cases": report}, indent=2)
+        + "\n"
+    )
 
 
 if __name__ == "__main__":

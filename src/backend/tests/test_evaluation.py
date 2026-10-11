@@ -81,6 +81,34 @@ def test_evaluation_fixtures_have_fifty_annotated_cases_across_formats():
         )
 
 
+def test_heldout_evaluation_cases_are_separate_from_benchmark_fixtures():
+    fixture_dir = Path(__file__).parent / "fixtures"
+    heldout_retrieval = json.loads(
+        (fixture_dir / "heldout_semantic_retrieval.json").read_text()
+    )
+    heldout_answers = json.loads(
+        (fixture_dir / "heldout_answer_quality.json").read_text()
+    )
+    tuning_ids = {
+        case["id"]
+        for name in ("semantic_retrieval.json", "answer_quality.json")
+        for case in json.loads((fixture_dir / name).read_text())
+    }
+    assert len(heldout_retrieval) >= 5
+    assert {case["id"] for case in heldout_retrieval}.isdisjoint(tuning_ids)
+    assert {case["id"] for case in heldout_answers}.isdisjoint(tuning_ids)
+    assert {case["id"] for case in heldout_retrieval} == {
+        case["id"] for case in heldout_answers
+    }
+    assert {case["format"] for case in heldout_answers} >= {
+        "txt",
+        "markdown",
+        "csv",
+        "docx",
+        "pdf",
+    }
+
+
 def test_format_builders_produce_files_readable_by_production_extractors():
     fixture = json.loads(
         (Path(__file__).parent / "fixtures" / "semantic_retrieval.json").read_text()

@@ -25,7 +25,7 @@ async def evaluate():
     cases = json.loads(
         (
             Path(__file__).resolve().parents[1]
-            / "src/backend/tests/fixtures/answer_quality.json"
+            / "src/backend/tests/fixtures/heldout_answer_quality.json"
         ).read_text()
     )
     pay_texts = cases[1]["texts"]

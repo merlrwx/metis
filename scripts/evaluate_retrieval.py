@@ -28,7 +28,7 @@ async def evaluate():
             "METIS_RETRIEVAL_FIXTURE",
             str(
                 Path(__file__).resolve().parents[1]
-                / "src/backend/tests/fixtures/semantic_retrieval.json"
+                / "src/backend/tests/fixtures/heldout_semantic_retrieval.json"
             ),
         )
     )
