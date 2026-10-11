@@ -60,13 +60,15 @@ def test_multiple_sources_groups_versions_and_neighbours():
                         chunk_index=chunk_index,
                         content="medication incident supervisor"
                         if chunk_index == 0
-                        else "Policy heading and labels",
+                        else "Medication incident policy heading and labels",
                         start_offset=chunk_index * 100,
                         end_offset=(chunk_index + 1) * 100,
                         embedding_model=provider.model_id,
                         embedding=vector
                         if chunk_index == 0
-                        else provider.embed_query("Policy heading labels"),
+                        else provider.embed_query(
+                            "Medication incident policy heading labels"
+                        ),
                     )
                 )
             documents.append(document)
