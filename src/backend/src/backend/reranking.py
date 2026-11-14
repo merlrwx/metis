@@ -3,6 +3,7 @@
 import json
 import os
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from backend.services.knowledge import SearchHit
@@ -14,13 +15,16 @@ class JinaReranker:
     def __init__(
         self, base_url: str, model: str, api_key: str = "", timeout: float = 30
     ):
+        if urlsplit(base_url).scheme not in {"http", "https"}:
+            raise ValueError("METIS_RERANKER_BASE_URL must be an http(s) URL")
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key
         self.timeout = timeout
 
     def rerank(self, query: str, hits: list[SearchHit]) -> list[SearchHit]:
-        request = Request(
+        # Scheme validated in __init__; the URL is operator configuration.
+        request = Request(  # noqa: S310
             f"{self.base_url}/rerank",
             data=json.dumps(
                 {
@@ -37,7 +41,7 @@ class JinaReranker:
             method="POST",
         )
         try:
-            with urlopen(request, timeout=self.timeout) as response:
+            with urlopen(request, timeout=self.timeout) as response:  # noqa: S310
                 payload = json.load(response)
         except HTTPError as error:
             raise RuntimeError(f"Reranker returned HTTP {error.code}") from error
