@@ -24,9 +24,13 @@ def configured_limits():
     return user_limit, organisation_limit
 
 
+def utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
 def enforce(organisation_id, user_id, operation):
     user_limit, organisation_limit = configured_limits()
-    now = datetime.now(UTC)
+    now = utcnow()
     window = now.replace(second=0, microsecond=0)
     with database.SessionLocal() as session:
         # Serialise admission across API processes using the existing org row.

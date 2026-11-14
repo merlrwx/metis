@@ -1,0 +1,229 @@
+{% extends "app_shell.html" %}
+{% from "_macros.html" import csrf, status_badge, icon with context %}
+{% block title %}Knowledge{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Knowledge</h1>
+    <p>Documents and sources Metis uses to answer questions. Everything here is shared with all members of {{ org.name }}.</p>
+  </div>
+  {% if is_admin %}<a class="btn btn-primary" href="#upload">{{ icon("upload") }} Upload</a>{% endif %}
+</div>
+
+{% if upload_error %}<div class="alert alert-error" role="alert"><p>{{ upload_error }}</p></div>{% endif %}
+{% if upload_results %}
+<div class="flash-stack" role="status" aria-live="polite">
+  {% for result in upload_results %}
+  <div class="alert alert-{{ 'success' if result.ok else 'error' }}"><p><strong>{{ result.name }}</strong> {{ result.message }}{% if not result.ok %} Select the file again to retry.{% endif %}</p></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="grid grid-sidebar">
+  <div class="stack">
+    <section class="card" id="documents"
+      {% if busy %}hx-get="/o/{{ org.id }}/knowledge{% if query %}?q={{ query | urlencode }}{% endif %}" hx-trigger="every 4s" hx-select="#documents" hx-swap="outerHTML" hx-push-url="false"{% endif %}>
+      <div class="card-header">
+        <h2>Documents</h2>
+        <form method="get" action="/o/{{ org.id }}/knowledge" role="search" class="row">
+          <label for="doc-search" class="sr-only">Filter documents</label>
+          <input id="doc-search" name="q" type="search" value="{{ query }}" placeholder="Filter by title" maxlength="200">
+        </form>
+      </div>
+      {% if busy %}<p class="faint" aria-live="polite">Some documents are still processing. This list refreshes automatically.</p>{% endif %}
+      {% if documents %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Title</th><th>Status</th><th class="hide-sm">Source</th><th class="hide-sm">Updated</th></tr></thead>
+          <tbody>
+          {% for document in documents %}
+            <tr>
+              <td>
+                <a class="title-link" href="/o/{{ org.id }}/documents/{{ document.id }}">{{ document.title }}</a>
+                {% if document.ingestion_status == "failed" %}<div class="faint">{{ document.ingestion_error or "Ingestion failed" }}</div>{% endif %}
+              </td>
+              <td>{{ status_badge(document.ingestion_status) }}</td>
+              <td class="hide-sm faint">{{ source_names.get(document.source_id, "File uploads") if document.source_id else "File uploads" }}</td>
+              <td class="hide-sm faint">{{ document.updated_at | ago }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% elif query %}
+      <div class="empty"><h3>No matches</h3><p>No document title contains “{{ query }}”. <a href="/o/{{ org.id }}/knowledge">Clear the filter</a>.</p></div>
+      {% else %}
+      <div class="empty">
+        {{ icon("doc") }}
+        <h3>Your library is empty</h3>
+        <p>Upload PDF, Word, text, Markdown or CSV files. Metis extracts and indexes them so you can ask questions.</p>
+      </div>
+      {% endif %}
+    </section>
+
+    {% if is_admin %}
+    <section class="card" id="upload">
+      <h2>Upload documents</h2>
+      <p class="muted">Up to {{ max_files }} files at a time, 20 MiB each. Each file is processed independently. A searchable document is not guaranteed to answer every question.</p>
+      <form method="post" action="/o/{{ org.id }}/documents" enctype="multipart/form-data">
+        {{ csrf() }}
+        <div class="field">
+          <label for="files">Files</label>
+          <input id="files" name="files" type="file" multiple required accept="{{ accepted_types }}" data-max-files="{{ max_files }}">
+          <p class="hint" id="files-status" aria-live="polite"></p>
+        </div>
+        <div class="grid grid-2">
+          <div class="field">
+            <label for="source_id">Add to source</label>
+            <select id="source_id" name="source_id">
+              <option value="">File uploads</option>
+              {% for source in upload_sources %}<option value="{{ source.id }}">{{ source.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="conflict_action">If a file with the same name exists</label>
+            <select id="conflict_action" name="conflict_action">
+              <option value="reject">Skip it and tell me</option>
+              <option value="replace">Replace the existing document</option>
+              <option value="new">Keep both as separate documents</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary"><span class="spinner" aria-hidden="true"></span><span class="idle-label">Upload and index</span><span class="busy-label">Uploading…</span></button>
+      </form>
+    </section>
+    {% else %}
+    <div class="alert alert-info"><p>An organisation owner or admin can upload documents and manage sources.</p></div>
+    {% endif %}
+  </div>
+
+  <div class="stack">
+    <section class="card" id="sources">
+      <h2>Sources</h2>
+      {% if sources %}
+      <ul class="list">
+        {% for source in sources %}
+        {% set config = source.configuration or {} %}
+        <li>
+          <div class="row-between">
+            <strong>{{ source.name }}</strong>
+            <span class="tag">{{ "Microsoft 365" if source.type == "microsoft365" else "Uploads" if source.type == "upload" else source.type }}</span>
+          </div>
+          {% if source.type == "microsoft365" %}
+          <div class="faint">
+            {% if source.sync_status == "queued" %}Queued for synchronisation
+            {% elif source.sync_status == "syncing" %}Synchronising now…
+            {% elif source.sync_status == "failed" %}Last synchronisation failed
+            {% elif config.sync_paused %}Paused — stored knowledge stays available
+            {% elif source.last_synced_at %}Synced {{ source.last_synced_at | ago }}
+            {% else %}Not yet synchronised{% endif %}
+          </div>
+          {% if config.connection_name %}<div class="faint">Library · {{ config.connection_name }}</div>{% endif %}
+          {% if config.connection_error %}<div class="faint">The last connection check failed. Ask the operator to check approval, credentials and permissions.</div>{% endif %}
+          {% if is_admin %}
+          <details class="disclosure">
+            <summary>Library controls</summary>
+            <div class="disclosure-body">
+              <div class="row">
+                <form method="post" action="/o/{{ org.id }}/sources/{{ source.id }}/sync" class="inline-form">{{ csrf() }}<button class="btn btn-sm" type="submit" {% if config.sync_paused %}disabled{% endif %}>Sync now</button></form>
+                <form method="post" action="/o/{{ org.id }}/sources/{{ source.id }}/check" class="inline-form">{{ csrf() }}<button class="btn btn-sm" type="submit">Check connection</button></form>
+              </div>
+              <hr class="divider">
+              <form method="post" action="/o/{{ org.id }}/sources/{{ source.id }}/settings">
+                {{ csrf() }}
+                <label class="check"><input type="checkbox" name="sync_enabled" value="true" {% if config.sync_enabled %}checked{% endif %}> Sync automatically every 15 minutes</label>
+                <label class="check"><input type="checkbox" name="paused" value="true" {% if config.sync_paused %}checked{% endif %}> Pause synchronisation</label>
+                <p class="hint">Pausing keeps the indexed snapshot available for answers.</p>
+                <button class="btn btn-sm" type="submit">Save settings</button>
+              </form>
+              <hr class="divider">
+              <form method="post" action="/o/{{ org.id }}/sources/{{ source.id }}/disconnect" hx-confirm="Disconnect {{ source.name }}? Its documents will no longer be used for answers. Stored files and history are kept.">
+                {{ csrf() }}
+                <button class="btn btn-sm btn-danger" type="submit">Disconnect library</button>
+              </form>
+            </div>
+          </details>
+          {% endif %}
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted">Uploaded files appear under “File uploads”. Add a named source to keep collections apart.</p>
+      {% endif %}
+      {% if is_admin %}
+      <details class="disclosure">
+        <summary>Add a source</summary>
+        <form method="post" action="/o/{{ org.id }}/sources" class="disclosure-body">
+          {{ csrf() }}
+          <div class="field"><label for="source-name">Name</label><input id="source-name" name="name" type="text" required maxlength="255"></div>
+          <div class="field">
+            <label for="source-kind">Type</label>
+            <select id="source-kind" name="kind">
+              <option value="upload">File uploads</option>
+              <option value="microsoft365">Microsoft 365 library</option>
+            </select>
+          </div>
+          <fieldset>
+            <legend>Microsoft 365 only</legend>
+            <label class="check"><input type="checkbox" name="approved" value="true"> This library is approved for every member of this organisation</label>
+            <label class="check"><input type="checkbox" name="auto_sync" value="true"> Sync automatically every 15 minutes</label>
+            <p class="hint">Mixed-permission libraries are unsupported. The operator configures credentials and the drive.</p>
+          </fieldset>
+          <button class="btn btn-sm btn-primary" type="submit">Add source</button>
+        </form>
+      </details>
+      {% endif %}
+    </section>
+
+    <section class="card" id="groups">
+      <h2>Saved groups</h2>
+      <p class="faint">A group is a saved selection of sources for narrowing questions. Groups do not change who can see knowledge.</p>
+      {% for group in groups %}
+      <details class="disclosure">
+        <summary>{{ group.name }} <span class="faint">{{ group.source_ids | length }} source{{ "" if group.source_ids | length == 1 else "s" }}</span></summary>
+        <div class="disclosure-body">
+          {% if not group.source_ids %}<p class="faint">This group has no available sources, so it searches nothing. Removed or disconnected sources are omitted.</p>{% endif %}
+          {% if is_admin %}
+          <form method="post" action="/o/{{ org.id }}/groups/{{ group.id }}">
+            {{ csrf() }}
+            <div class="field"><label for="group-{{ group.id }}-name">Name</label><input id="group-{{ group.id }}-name" name="name" type="text" required maxlength="255" value="{{ group.name }}"></div>
+            <div class="field">
+              <label for="group-{{ group.id }}-sources">Sources</label>
+              <select id="group-{{ group.id }}-sources" name="source_ids" multiple>
+                {% for source in sources %}<option value="{{ source.id }}" {% if source.id in group.source_ids %}selected{% endif %}>{{ source.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <button class="btn btn-sm" type="submit">Save group</button>
+          </form>
+          <form method="post" action="/o/{{ org.id }}/groups/{{ group.id }}/delete" hx-confirm="Delete the group {{ group.name }}?" class="inline-form">
+            {{ csrf() }}<button class="btn btn-sm btn-danger" type="submit">Delete group</button>
+          </form>
+          {% else %}
+          <p class="faint">{% for id in group.source_ids %}{{ source_names.get(id, "Unknown source") }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+          {% endif %}
+        </div>
+      </details>
+      {% else %}
+      <p class="muted">No saved groups yet.</p>
+      {% endfor %}
+      {% if is_admin and sources %}
+      <details class="disclosure">
+        <summary>Create a group</summary>
+        <form method="post" action="/o/{{ org.id }}/groups" class="disclosure-body">
+          {{ csrf() }}
+          <div class="field"><label for="new-group-name">Name</label><input id="new-group-name" name="name" type="text" required maxlength="255"></div>
+          <div class="field">
+            <label for="new-group-sources">Sources</label>
+            <select id="new-group-sources" name="source_ids" multiple>
+              {% for source in sources %}<option value="{{ source.id }}">{{ source.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <button class="btn btn-sm btn-primary" type="submit">Create group</button>
+        </form>
+      </details>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

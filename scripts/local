@@ -44,7 +44,7 @@ python3 - <<'PY'
 import json, urllib.request
 with urllib.request.urlopen("http://127.0.0.1:8000/api/info", timeout=10) as response:
     assert json.load(response)["name"] == "Metis", "Port 8000 is occupied by another application"
-for address in ["http://127.0.0.1:8000/health", "http://127.0.0.1:8501/_stcore/health"]:
+for address in ["http://127.0.0.1:8000/health", "http://127.0.0.1:8501/healthz"]:
     with urllib.request.urlopen(address, timeout=10) as response:
         assert response.status == 200
 print("Metis: http://localhost:8501\nAPI: http://localhost:8000/docs\nSemantic embeddings and ChatMock bridge checked.")

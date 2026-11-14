@@ -524,7 +524,7 @@ def test_backend(base_url):
 
 
 def test_frontend(base_url):
-    health = requests.get(f"{base_url}/_stcore/health", timeout=5)
+    health = requests.get(f"{base_url}/healthz", timeout=5)
     require(
         health.status_code == 200, f"Frontend health returned HTTP {health.status_code}"
     )
@@ -536,6 +536,14 @@ def test_frontend(base_url):
     require(
         response.headers.get("content-type", "").startswith("text/html"),
         "Frontend did not return an HTML page",
+    )
+    require(
+        response.url.endswith("/login") and 'name="csrf_token"' in response.text,
+        "Frontend did not redirect anonymous visitors to the sign-in form",
+    )
+    require(
+        "frame-ancestors 'none'" in response.headers.get("content-security-policy", ""),
+        "Frontend did not send its Content-Security-Policy",
     )
 
 
@@ -564,7 +572,7 @@ def main():
         build_and_load_images()
         backend_url, frontend_url = deploy_application()
         wait_for_service(f"{backend_url}/health")
-        wait_for_service(f"{frontend_url}/_stcore/health")
+        wait_for_service(f"{frontend_url}/healthz")
         test_backend(backend_url)
         test_frontend(frontend_url)
         success = True

@@ -1,7 +1,7 @@
 [project]
 name = "metis-frontend"
 version = "0.1.0"
-description = "Streamlit frontend for Metis organisation knowledge"
+description = "Server-rendered web interface for Metis organisation knowledge"
 readme = "README.md"
 authors = [
     { name = "Jason Standen", email = "jason@merl.one" }
@@ -9,8 +9,23 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "cryptography>=45,<51",
-    "streamlit>=1.37.0",
+    "fastapi>=0.115",
+    "httpx>=0.28",
+    "jinja2>=3.1.6",
+    "markdown-it-py>=3.0",
+    "python-multipart>=0.0.20",
+    "uvicorn>=0.34",
 ]
+
+[project.scripts]
+metis-web = "metis_web.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["metis_web"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

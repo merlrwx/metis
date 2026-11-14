@@ -75,7 +75,8 @@ def get_object_storage() -> ObjectStorage:
     backend = os.environ.get("OBJECT_STORAGE_BACKEND", "local").lower()
     if backend == "local":
         return LocalObjectStorage(
-            os.environ.get("OBJECT_STORAGE_LOCAL_DIR", "/tmp/metis-objects")
+            # Development default only; deployments set OBJECT_STORAGE_LOCAL_DIR.
+            os.environ.get("OBJECT_STORAGE_LOCAL_DIR", "/tmp/metis-objects")  # noqa: S108
         )
     if backend == "s3":
         bucket = os.environ.get("S3_BUCKET")

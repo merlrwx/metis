@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
+# Backend tests including Redis worker recovery, against disposable services only.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-metis-local-only}"
-export DATABASE_URL="postgresql+psycopg://metis:${POSTGRES_PASSWORD}@localhost:5432/metis"
-export TEST_DATABASE_URL="$DATABASE_URL"
-export REDIS_URL="redis://localhost:6379/15"
+# shellcheck source=scripts/lib-throwaway-services.sh
+source scripts/lib-throwaway-services.sh
+start_throwaway_postgres
+start_throwaway_redis
 export TASKIQ_IDLE_TIMEOUT_MS="250"
 export TASKIQ_XREAD_BLOCK_MS="100"
 export METIS_QUEUE_TESTS="1"
-docker_config="$(mktemp -d)"
-storage_dir="$(mktemp -d)"
-trap 'rm -rf "$docker_config" "$storage_dir"' EXIT
-export DOCKER_CONFIG="$docker_config"
-export OBJECT_STORAGE_BACKEND=local
-export OBJECT_STORAGE_LOCAL_DIR="$storage_dir"
-export EMBEDDING_PROVIDER=hashing
-export METIS_AUTH_SECRET_KEY="metis-local-test-secret-key-with-at-least-32-chars"
-export METIS_BOOTSTRAP_TOKEN="metis-local-test-bootstrap-token"
-mise exec -- docker compose up -d --wait database redis
 mise exec -- uv run --locked --project src/backend alembic -c src/backend/alembic.ini upgrade head
 mise exec -- uv run --locked --project src/backend pytest src/backend/tests --cov=backend --cov-report=term-missing --cov-fail-under=80

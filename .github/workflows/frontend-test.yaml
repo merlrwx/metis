@@ -59,7 +59,7 @@ jobs:
         run: uv sync --locked
 
       - name: Run tests with coverage
-        run: uv run --locked pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80
+        run: uv run --locked pytest tests/ -v --cov=metis_web --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80
 
       - name: Upload coverage report
         if: ${{ always() }}

@@ -68,7 +68,7 @@ while time.monotonic() < deadline:
         with urllib.request.urlopen("http://127.0.0.1:8000/api/info", timeout=5) as response:
             if json.load(response).get("name") != "Metis":
                 raise SystemExit("Port 8000 belongs to another application")
-        for address in ("http://127.0.0.1:8000/health", "http://127.0.0.1:8501/_stcore/health"):
+        for address in ("http://127.0.0.1:8000/health", "http://127.0.0.1:8501/healthz"):
             with urllib.request.urlopen(address, timeout=5) as response:
                 assert response.status == 200
         break

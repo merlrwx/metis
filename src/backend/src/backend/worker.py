@@ -21,7 +21,8 @@ def main() -> None:
         raise SystemExit("REDIS_URL must be configured to start the worker")
     asyncio.run(publish_startup_wakeup())
     taskiq = Path(sys.executable).with_name("taskiq")
-    os.execv(
+    # Replaces this process with the venv's taskiq using fixed arguments.
+    os.execv(  # noqa: S606
         taskiq,
         [
             str(taskiq),

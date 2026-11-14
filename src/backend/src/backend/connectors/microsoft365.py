@@ -92,7 +92,8 @@ class Microsoft365Source:
         self._authenticate()
         return json.loads(
             self._read(
-                Request(url, headers={"Authorization": f"Bearer {self.token}"}),
+                # Callers validate the https Graph URL before building the request.
+                Request(url, headers={"Authorization": f"Bearer {self.token}"}),  # noqa: S310
                 4 * 1024 * 1024,
             )
         )
@@ -177,7 +178,8 @@ class Microsoft365Source:
         headers = {"Authorization": f"Bearer {self.token}"}
         for _ in range(4):
             try:
-                return self._read(Request(url, headers=headers), MAX_UPLOAD_BYTES)
+                # URL is the configured https Graph drive or a validated SharePoint redirect.
+                return self._read(Request(url, headers=headers), MAX_UPLOAD_BYTES)  # noqa: S310
             except HTTPError as error:
                 if error.code != 302:
                     raise

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_macros.html" import flashes as render_flashes with context %}
+{% block body %}
+<div class="auth">
+  <section class="auth-hero">
+    <a class="brand" href="/"><span class="brand-mark">M</span> Metis</a>
+    <div>
+      <h1>Answers from your organisation's own knowledge.</h1>
+      <p>Upload policies, procedures and records. Ask questions in plain language and get answers that cite the exact source.</p>
+      <ul>
+        <li>Every answer links back to its evidence</li>
+        <li>Each organisation's knowledge stays private to its members</li>
+        <li>Invite your team and control who can manage documents</li>
+      </ul>
+    </div>
+    <p class="hero-foot">Metis says when the evidence is missing instead of guessing.</p>
+  </section>
+  <main class="auth-panel" id="content">
+    <div class="auth-card">
+      {{ render_flashes(flashes) }}
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+{% endblock %}

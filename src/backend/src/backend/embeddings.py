@@ -6,6 +6,7 @@ import re
 from itertools import pairwise
 from typing import Protocol
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 EMBEDDING_DIMENSIONS = 1536
@@ -62,6 +63,8 @@ class OpenAICompatibleEmbeddingProvider:
     ):
         if not 1 <= dimensions <= 2000:
             raise ValueError("Embedding dimensions must be between 1 and 2000")
+        if urlsplit(base_url).scheme not in {"http", "https"}:
+            raise ValueError("EMBEDDING_BASE_URL must be an http(s) URL")
         self.dimensions = dimensions
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -82,7 +85,8 @@ class OpenAICompatibleEmbeddingProvider:
         return self._embed_batch([text])[0]
 
     def _embed_batch(self, texts: list[str]) -> list[list[float]]:
-        request = Request(
+        # Scheme validated in __init__; the URL is operator configuration.
+        request = Request(  # noqa: S310
             f"{self.base_url}/embeddings",
             data=json.dumps({"model": self.model, "input": texts}).encode("utf-8"),
             headers={
@@ -92,7 +96,8 @@ class OpenAICompatibleEmbeddingProvider:
             method="POST",
         )
         try:
-            with urlopen(request, timeout=self.timeout) as response:
+            # Scheme validated in __init__; the URL is operator configuration.
+            with urlopen(request, timeout=self.timeout) as response:  # noqa: S310
                 try:
                     payload = json.load(response)
                 except (ValueError, UnicodeDecodeError) as error:
