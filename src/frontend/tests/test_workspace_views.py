@@ -307,3 +307,37 @@ def test_api_unreachable(client, api):
     api.on("GET", f"{BASE}/documents", fail)
     response = client.get(f"/o/{ORG}")
     assert response.status_code == 503
+
+
+def test_document_preview_and_warnings_are_admin_only(client, api):
+    doc = document()
+    detail = {
+        "document": doc,
+        "versions": [],
+        "extraction_preview": "Secret text",
+        "preview_truncated": False,
+        "page_count": 2,
+        "chunk_count": 3,
+        "extracted_characters": 12345,
+        "blank_page_count": 1,
+        "parsing_warnings": ["Page 2 has no extractable text."],
+        "visibility": "Shared",
+        "readiness": "Ready",
+    }
+    api.on("GET", f"{BASE}/documents/{doc['id']}/detail", (200, detail))
+    admin_page = client.get(f"/o/{ORG}/documents/{doc['id']}")
+    assert (
+        "12,345" in admin_page.text
+        and "Page 2 has no extractable text." in admin_page.text
+    )
+    api.role = "member"
+    member_detail = {
+        **detail,
+        "extraction_preview": "",
+        "extracted_characters": None,
+        "parsing_warnings": [],
+    }
+    api.on("GET", f"{BASE}/documents/{doc['id']}/detail", (200, member_detail))
+    member_page = client.get(f"/o/{ORG}/documents/{doc['id']}")
+    assert "available to organisation owners and admins" in member_page.text
+    assert "Extracted characters" not in member_page.text

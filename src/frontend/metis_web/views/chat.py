@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, Form, Request
 
 from metis_web.backend import ApiError, Backend
-from metis_web.rendering import redirect, render
+from metis_web.rendering import render
 from metis_web.session import require_csrf
 from metis_web.views.common import act, api_org, form_list, workspace
 
@@ -17,6 +17,26 @@ SUGGESTIONS = (
     "Summarise the key points of our leave policy.",
     "Which procedure is the most recent version?",
 )
+
+
+def friendly_error(error: ApiError) -> str:
+    """Separate guidance for unavailable sources, indexing and provider failures."""
+    if error.status_code == 404:
+        return (
+            "A selected source or conversation is unavailable. Remove the "
+            "unavailable filter and try again."
+        )
+    if error.status_code == 409 and "index" in error.detail.lower():
+        return (
+            "Knowledge indexing is in progress or needs attention. Try again later "
+            "or ask an administrator to check indexing status."
+        )
+    if error.status_code == 503:
+        return (
+            "The embedding or answer provider is unavailable. Try again later; an "
+            "administrator can check provider configuration."
+        )
+    return error.detail
 
 
 def scope_from(values: dict) -> dict:
@@ -60,6 +80,11 @@ async def _chat_page(
     sources = await backend.get(f"{api_org(org_id)}/sources")
     groups = await backend.get(f"{api_org(org_id)}/groups")
     ready = [item for item in documents if item.get("ingestion_status") == "indexed"]
+    failed = sum(item.get("ingestion_status") == "failed" for item in documents)
+    processing = sum(
+        item.get("ingestion_status") in {"pending", "queued", "processing"}
+        for item in documents
+    )
     scope = (extra or {}).get("scope") or scope_from(
         (conversation or {}).get("scope") or {}
     )
@@ -80,6 +105,9 @@ async def _chat_page(
             "conversation": conversation,
             "messages": (conversation or {}).get("messages", []),
             "ready_documents": ready,
+            "failed_count": failed,
+            "processing_count": processing,
+            "related": {},
             "sources": sources,
             "groups": groups,
             "scope": scope,
@@ -146,14 +174,28 @@ async def ask(request: Request, org_id: UUID):
             org_id,
             target_id,
             {
-                "error": error.detail,
+                "error": friendly_error(error),
                 "draft": message,
                 "request_id": request_id,
                 "scope": scope,
             },
             200,
         )
-    return redirect(request, f"/o/{org_id}/chat/{result['conversation_id']}#latest")
+    # Related passages are only in this response, so render the conversation
+    # directly; the request id makes a browser resubmission return the same turn.
+    conversation_id = UUID(str(result["conversation_id"]))
+    response = await _chat_page(
+        request,
+        org_id,
+        conversation_id,
+        {
+            "related": {
+                str(result.get("message_id")): result.get("related_passages") or []
+            }
+        },
+    )
+    response.headers["HX-Push-Url"] = f"/o/{org_id}/chat/{conversation_id}#latest"
+    return response
 
 
 @router.post("/o/{org_id}/chat/{conversation_id}/rename")

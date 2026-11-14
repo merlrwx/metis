@@ -116,7 +116,25 @@ def test_ask_success_redirects_to_conversation(client, api):
         f"{BASE}/documents",
         (200, [document(id="11111111-1111-1111-1111-111111111111")]),
     )
-    api.on("POST", f"{BASE}/chat", (200, {"conversation_id": CONV}))
+    api.on(
+        "POST",
+        f"{BASE}/chat",
+        (
+            200,
+            {
+                "conversation_id": CONV,
+                "message_id": MSG,
+                "related_passages": [
+                    {
+                        "document_title": "Rota guide",
+                        "snippet": "Nearby evidence",
+                        "page": 2,
+                    }
+                ],
+            },
+        ),
+    )
+    api.on("GET", f"{BASE}/conversations/{CONV}", (200, conversation()))
     request_id = "22222222-2222-2222-2222-222222222222"
     response = post(
         client,
@@ -129,7 +147,11 @@ def test_ask_success_redirects_to_conversation(client, api):
             "document_ids": ["11111111-1111-1111-1111-111111111111"],
         },
     )
-    assert response.headers["location"] == f"/o/{ORG}/chat/{CONV}#latest"
+    assert response.status_code == 200
+    assert response.headers["HX-Push-Url"] == f"/o/{ORG}/chat/{CONV}#latest"
+    assert "Related retrieved passages · 1" in response.text
+    assert "Nearby evidence" in response.text
+    assert "review the related passages" in response.text
     assert api.called("POST", f"{BASE}/chat") == [
         {
             "message": "What now?",
@@ -150,7 +172,7 @@ def test_ask_failure_keeps_question_and_request_id(client, api):
         {"message": "Keep me", "request_id": request_id, "conversation_id": CONV},
     )
     assert response.status_code == 200
-    assert "Chat model unavailable" in response.text
+    assert "answer provider is unavailable" in response.text
     assert ">Keep me</textarea>" in response.text
     assert f'value="{request_id}"' in response.text
 
@@ -158,6 +180,7 @@ def test_ask_failure_keeps_question_and_request_id(client, api):
 def test_ask_validation_and_bad_request_id(client, api):
     assert post(client, f"/o/{ORG}/chat", {"message": "  "}).status_code == 400
     api.on("POST", f"{BASE}/chat", (200, {"conversation_id": CONV}))
+    api.on("GET", f"{BASE}/conversations/{CONV}", (200, conversation()))
     post(client, f"/o/{ORG}/chat", {"message": "Hi", "request_id": "nope"})
     assert len(api.called("POST", f"{BASE}/chat")[0]["request_id"]) == 36
 
@@ -376,3 +399,42 @@ def test_concurrent_refreshes_share_one_rotation(app, api):
     results = asyncio.run(run())
     assert len(refreshes) == 1
     assert all(result["refresh_token"] == "r2" for result in results)
+
+
+import pytest
+
+
+@pytest.mark.parametrize(
+    ("status", "detail", "expected"),
+    [
+        (404, "Not found", "A selected source or conversation is unavailable"),
+        (409, "Index is being rebuilt", "Knowledge indexing is in progress"),
+        (409, "Conversation changed", "Conversation changed"),
+        (503, "down", "The embedding or answer provider is unavailable"),
+    ],
+)
+def test_chat_errors_get_specific_guidance(client, api, status, detail, expected):
+    api.on("POST", f"{BASE}/chat", (status, {"detail": detail}))
+    response = post(client, f"/o/{ORG}/chat", {"message": "Q"})
+    assert expected in response.text
+
+
+def test_chat_warns_about_indexing_and_guides_outcomes(client, api):
+    api.on(
+        "GET",
+        f"{BASE}/documents",
+        (
+            200,
+            [document(ingestion_status="failed"), document(ingestion_status="queued")],
+        ),
+    )
+    insufficient = conversation()
+    insufficient["messages"][1]["outcome"] = "insufficient_evidence"
+    api.on("GET", f"{BASE}/conversations/{CONV}", (200, insufficient))
+    page = client.get(f"/o/{ORG}/chat/{CONV}")
+    assert "1 document failed indexing" in page.text
+    assert "1 document still being indexed" in page.text
+    assert "Try a narrower question" in page.text
+    assert "freshness: stale" in page.text
+    assert "Preview extracted text" in page.text
+    assert "Related retrieved passages" not in page.text

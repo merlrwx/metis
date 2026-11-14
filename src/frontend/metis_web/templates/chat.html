@@ -12,6 +12,7 @@
       <div class="faint">
         {% if citation.source_name %}{{ citation.source_name }} · {% endif %}{% if citation.section %}{{ citation.section }}{% endif %}
         {% if citation.source_modified_at %} · modified {{ citation.source_modified_at | when }}{% endif %}
+        {% if citation.source_freshness %} · freshness: {{ citation.source_freshness | replace("_", " ") }}{% endif %}
       </div>
       {% if citation.source_type == "microsoft365" %}
         <div class="faint">Library last synced {{ citation.source_last_synced_at | when("never") }}</div>
@@ -22,7 +23,7 @@
       <blockquote>{{ citation.snippet }}</blockquote>
       <div class="row">
         {% if citation.document_version_id %}<a class="btn btn-sm" hx-boost="false" href="/o/{{ org.id }}/documents/{{ citation.document_id }}/versions/{{ citation.document_version_id }}/download">Download original</a>{% endif %}
-        <a class="btn btn-sm btn-ghost" href="/o/{{ org.id }}/documents/{{ citation.document_id }}">Document details</a>
+        <a class="btn btn-sm btn-ghost" href="/o/{{ org.id }}/documents/{{ citation.document_id }}">{{ "Preview extracted text" if is_admin else "Document details" }}</a>
         {% set link = citation.source_url | safe_url %}{% if link %}<a class="btn btn-sm btn-ghost" href="{{ link }}" target="_blank" rel="noopener noreferrer">Open in source</a>{% endif %}
       </div>
     </div>
@@ -32,6 +33,24 @@
 {% elif message.citations is not none %}
 <p class="faint">No supporting sources were found for this answer.</p>
 {% endif %}
+{% endmacro %}
+
+{% macro related_list(passages) %}
+<details class="disclosure related">
+  <summary>Related retrieved passages · {{ passages | length }}</summary>
+  <div class="disclosure-body citations">
+    {% for passage in passages %}
+    <div class="citation">
+      <div class="body">
+        <strong>{{ loop.index }}. {{ passage.document_title or "Source document" }}</strong>
+        <div class="faint">{% if passage.source_name %}{{ passage.source_name }}{% endif %}{% if passage.page is not none %} · p. {{ passage.page }}{% endif %}{% if passage.section %} · {{ passage.section }}{% endif %}</div>
+        <blockquote>{{ passage.snippet }}</blockquote>
+        {% set link = passage.source_url | safe_url %}{% if link %}<a class="btn btn-sm btn-ghost" href="{{ link }}" target="_blank" rel="noopener noreferrer">Open in source</a>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</details>
 {% endmacro %}
 
 {% block content %}
@@ -80,9 +99,13 @@
         <div class="msg-body">
           {% set outcome = OUTCOME_LABELS.get(message.outcome) %}
           {% if outcome %}<span class="badge badge-busy">{{ outcome }}</span>{% endif %}
+          {% if message.outcome == "insufficient_evidence" %}<p class="hint">Try a narrower question, check the selected sources, or ask an administrator whether the documents are indexed.</p>
+          {% elif message.outcome == "partially_answered" %}<p class="hint">Some parts were not supported by the retrieved evidence. Narrow the question or review the related passages below.</p>{% endif %}
           <div class="bubble">{% if message.role == "assistant" %}{{ message.content | markdown }}{% else %}<p>{{ message.content }}</p>{% endif %}</div>
           {% if message.role == "assistant" %}
           {{ citation_list(message) }}
+          {% set passages = related.get(message.id | string) %}
+          {% if passages and message.outcome == "partially_answered" %}{{ related_list(passages) }}{% endif %}
           <details class="feedback">
             <summary>Was this helpful?</summary>
             <form method="post" action="/o/{{ org.id }}/chat/{{ conversation.id }}/messages/{{ message.id }}/feedback" class="card">
@@ -121,6 +144,8 @@
     </div>
 
     <div class="composer">
+      {% if failed_count %}<div class="alert alert-warn"><p>{{ failed_count }} document{{ "" if failed_count == 1 else "s" }} failed indexing. {% if is_admin %}<a href="/o/{{ org.id }}/knowledge">Review them in Knowledge</a>.{% else %}Ask an administrator to retry ingestion.{% endif %}</p></div>{% endif %}
+      {% if processing_count %}<div class="alert alert-info"><p>{{ processing_count }} document{{ "" if processing_count == 1 else "s" }} still being indexed. Check back after processing finishes.</p></div>{% endif %}
       {% if error %}<div class="alert alert-error" role="alert"><div><p><strong>{{ error }}</strong></p><p>Your question is kept below. Sending it again is safe; it will not be answered twice.</p></div></div>{% endif %}
       <form method="post" action="/o/{{ org.id }}/chat" class="card" hx-indicator="this">
         {{ csrf() }}
@@ -158,7 +183,8 @@
               </div>
             </div>
           </details>
-          <button type="submit" class="btn btn-primary"><span class="spinner" aria-hidden="true"></span><span class="idle-label">{{ icon("send") }} Send</span><span class="busy-label">Searching and answering…</span></button>
+          <span class="faint hide-sm">Retrieval runs first; an answer is generated only when the evidence supports one.</span>
+          <button type="submit" class="btn btn-primary"><span class="spinner" aria-hidden="true"></span><span class="idle-label">{{ icon("send") }} Send</span><span class="busy-label">Retrieving evidence…</span></button>
         </div>
       </form>
     </div>

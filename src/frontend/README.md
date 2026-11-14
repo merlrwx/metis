@@ -22,6 +22,10 @@ Open http://localhost:8501. Create an account, create an organisation (or open a
 | Team & settings | Rename the organisation, invitation links, roles, member removal and leaving. |
 | Account | Profile, password change and the list of signed-in sessions with remote sign-out. |
 
+## Evidence and failures
+
+Each answer shows its exact cited excerpts with source title, page or section, and freshness information when available. Web-backed citations open in their source. Owners and admins can open a bounded, read-only extracted-text preview with parsing warnings; members use the cited excerpt and the authenticated original download. Retrieval runs before answer generation, which only proceeds when the evidence supports a response. Partial answers list the related passages that were retrieved. Missing sources, indexing problems, insufficient evidence and provider failures each get separate guidance. Answer feedback is stored with the conversation for diagnostics and evaluation; it is not indexed as knowledge.
+
 ## Configuration
 
 | Variable | Default | Purpose |

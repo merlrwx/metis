@@ -18,8 +18,13 @@
     <section class="card">
       <h2>Extracted text</h2>
       <p class="faint">{{ detail.readiness }}</p>
+      {% if is_admin %}
+      {% for warning in detail.parsing_warnings or [] %}<div class="alert alert-warn"><p>{{ warning }}</p></div>{% endfor %}
       <div class="preview" tabindex="0">{{ detail.extraction_preview or "No extracted text is available yet." }}</div>
-      {% if detail.preview_truncated %}<p class="hint">Showing the first 4,000 characters.</p>{% endif %}
+      {% if detail.preview_truncated %}<p class="hint">Read-only preview of the first 4,000 characters.</p>{% endif %}
+      {% else %}
+      <p class="muted">The extracted-text preview is available to organisation owners and admins. Use cited excerpts in answers, or download the original.</p>
+      {% endif %}
     </section>
 
     {% if detail.versions %}
@@ -51,6 +56,8 @@
       <ul class="list">
         <li class="row-between"><span class="muted">Pages</span><span>{{ detail.page_count }}</span></li>
         <li class="row-between"><span class="muted">Searchable passages</span><span>{{ detail.chunk_count }}</span></li>
+        {% if is_admin and detail.extracted_characters is number %}<li class="row-between"><span class="muted">Extracted characters</span><span>{{ "{:,}".format(detail.extracted_characters) }}</span></li>
+        <li class="row-between"><span class="muted">Blank pages</span><span>{{ detail.blank_page_count or 0 }}</span></li>{% endif %}
         <li class="row-between"><span class="muted">Last indexed</span><span>{{ detail.last_successful_indexing | when("Not yet") }}</span></li>
         {% if detail.source_modified_at %}<li class="row-between"><span class="muted">Source modified</span><span>{{ detail.source_modified_at | when }}</span></li>{% endif %}
         <li class="row-between"><span class="muted">Added</span><span>{{ document.created_at | when }}</span></li>
