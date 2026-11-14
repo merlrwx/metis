@@ -16,6 +16,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from metis_web import views
 from metis_web.backend import ApiError, RefreshCoordinator, SignedOut
 from metis_web.config import Settings
+from metis_web.limits import RequestSizeLimit
 from metis_web.rendering import render, templates
 from metis_web.session import (
     CSRF_COOKIE,
@@ -73,6 +74,7 @@ def create_app(transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
         headers={"User-Agent": "metis-web"},
     )
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    app.add_middleware(RequestSizeLimit)
     app.include_router(views.router)
 
     @app.middleware("http")

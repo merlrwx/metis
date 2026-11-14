@@ -133,3 +133,26 @@ def test_invalid_form_is_reported(client):
     response = post(client, "/organisations", {})
     assert response.status_code == 422
     assert "Check the form" in response.text
+
+
+def test_request_bodies_are_bounded_before_form_parsing(anon, api):
+    from metis_web.limits import BATCH_LIMIT, FILE_LIMIT, FORM_LIMIT, limit_for
+
+    assert limit_for("/login") == FORM_LIMIT
+    assert limit_for("/o/x/documents") == BATCH_LIMIT
+    assert limit_for("/o/x/documents/y/replace") == FILE_LIMIT
+    declared = anon.post("/login", content=b"x" * (FORM_LIMIT + 1))
+    assert declared.status_code == 413
+
+    def chunks():
+        for _ in range(FORM_LIMIT // 1024 + 2):
+            yield b"x" * 1024
+
+    streamed = anon.post(
+        "/login",
+        content=chunks(),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    # FastAPI reports an aborted form read as 400; either way reading stops at the limit.
+    assert streamed.status_code in (400, 413)
+    assert not api.called("POST", "/api/auth/token")
