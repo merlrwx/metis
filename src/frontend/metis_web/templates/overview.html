@@ -10,6 +10,7 @@
   {% if is_admin %}<a class="btn btn-primary" href="/o/{{ org.id }}/knowledge#upload">{{ icon("upload") }} Upload documents</a>{% endif %}
 </div>
 
+<div class="stack">
 <form method="get" action="/o/{{ org.id }}/chat" class="card">
   <label for="quick-ask">Ask a question</label>
   <div class="row">
@@ -19,7 +20,7 @@
   <p class="hint">Metis searches every indexed document and cites the passages it used.</p>
 </form>
 
-<div class="grid grid-3 stack">
+<div class="grid grid-3">
   <div class="card stat"><span class="stat-label">Documents</span><span class="stat-value">{{ stats.documents }}</span></div>
   <div class="card stat"><span class="stat-label">Ready to answer from</span><span class="stat-value">{{ stats.indexed }}</span></div>
   <div class="card stat"><span class="stat-label">Processing</span><span class="stat-value">{{ stats.processing }}</span></div>
@@ -73,4 +74,5 @@
   </div>
   {% endif %}
 </section>
+</div>
 {% endblock %}

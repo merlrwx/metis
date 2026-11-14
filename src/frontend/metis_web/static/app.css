@@ -118,6 +118,7 @@ img, svg { vertical-align: middle; }
 /* Cards and sections */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.15rem 1.25rem; }
 .card + .card, .stack > * + * { margin-top: 1rem; }
+.grid > .card + .card { margin-top: 0; }
 .card-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
 .card-header h2 { margin: 0; }
 .grid { display: grid; gap: 1rem; }
@@ -159,6 +160,8 @@ legend { font-weight: 600; padding: 0 .3rem; }
   background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap;
   transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .05s ease;
 }
+.btn svg { width: 18px; height: 18px; flex: none; }
+.btn-sm svg { width: 16px; height: 16px; }
 .btn:hover { border-color: var(--primary); color: var(--primary); }
 .btn:active { transform: translateY(1px); }
 .btn[disabled], .btn[aria-disabled=true] { opacity: .55; cursor: not-allowed; }
@@ -203,7 +206,8 @@ th { color: var(--muted); font-size: .8rem; font-weight: 650; text-transform: up
 tbody tr:hover { background: var(--surface-2); }
 td .title-link { font-weight: 600; color: var(--ink); text-decoration: none; }
 td .title-link:hover { color: var(--primary); text-decoration: underline; }
-.actions { display: flex; gap: .4rem; justify-content: flex-end; flex-wrap: wrap; }
+td.actions { text-align: right; white-space: nowrap; }
+td.actions form + form { margin-left: .4rem; }
 
 .empty { text-align: center; padding: 2.25rem 1rem; color: var(--muted); }
 .empty svg { width: 40px; height: 40px; color: var(--faint); margin-bottom: .5rem; }

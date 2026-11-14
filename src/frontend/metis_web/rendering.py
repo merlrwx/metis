@@ -134,7 +134,7 @@ templates.env.filters.update(
     device=device,
 )
 templates.env.globals.update(
-    OUTCOME_LABELS=OUTCOME_LABELS, ROLE_LABELS=ROLE_LABELS, ASSET_VERSION="1"
+    OUTCOME_LABELS=OUTCOME_LABELS, ROLE_LABELS=ROLE_LABELS, ASSET_VERSION="2"
 )
 
 
