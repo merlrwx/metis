@@ -14,6 +14,13 @@ from backend import database, main
 pytestmark = pytest.mark.external_worker
 
 
+@pytest.fixture(autouse=True)
+def fixed_budget_window(monkeypatch):
+    """Keep each test inside one budget minute; real clocks cross boundaries."""
+    started = request_limits.utcnow()
+    monkeypatch.setattr(request_limits, "utcnow", lambda: started)
+
+
 def client_and_org(monkeypatch):
     monkeypatch.setattr(main.knowledge, "search_chunks", lambda *args, **kwargs: [])
     client = new_authenticated_client(main.app)
