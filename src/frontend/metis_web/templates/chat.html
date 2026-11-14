@@ -121,7 +121,7 @@
     </div>
 
     <div class="composer">
-      {% if error %}<div class="alert alert-error" role="alert"><p>{{ error }} Your question is kept below; sending it again is safe.</p></div>{% endif %}
+      {% if error %}<div class="alert alert-error" role="alert"><div><p><strong>{{ error }}</strong></p><p>Your question is kept below. Sending it again is safe; it will not be answered twice.</p></div></div>{% endif %}
       <form method="post" action="/o/{{ org.id }}/chat" class="card" hx-indicator="this">
         {{ csrf() }}
         <input type="hidden" name="request_id" value="{{ request_id }}">
