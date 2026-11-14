@@ -91,6 +91,67 @@ class AuditEvent(Timestamped, Base):
     )
 
 
+class AuthSession(Timestamped, Base):
+    """A revocable sign-in; access tokens carry its id, refresh tokens rotate."""
+
+    __tablename__ = "auth_sessions"
+    __table_args__ = (Index("ix_auth_sessions_user_active", "user_id", "revoked_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    refresh_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    last_used_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    user_agent: Mapped[str | None] = mapped_column(String(255))
+    ip_address: Mapped[str | None] = mapped_column(String(64))
+
+
+class AuthAttempt(Timestamped, Base):
+    """Recent failed sign-ins keyed by a hash of the email, for throttling."""
+
+    __tablename__ = "auth_attempts"
+    __table_args__ = (
+        Index("ix_auth_attempts_identifier_created", "identifier", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    identifier: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class Invitation(Timestamped, Base):
+    __tablename__ = "invitations"
+    __table_args__ = (
+        CheckConstraint("role IN ('admin', 'member')", name="ck_invitation_role"),
+        Index("ix_invitations_organisation_created", "organisation_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False
+    )
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False, default="member")
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    invited_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Source(Timestamped, Base):
     __tablename__ = "sources"
     __table_args__ = (UniqueConstraint("id", "organisation_id"),)
