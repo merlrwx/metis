@@ -166,3 +166,11 @@ def test_reranker_rejects_out_of_range_indexes(monkeypatch):
     )
     with pytest.raises(RuntimeError, match="invalid result indexes"):
         JinaReranker("http://rerank.test", "test-model").rerank("query", [hit])
+@pytest.mark.parametrize(
+    "base_url", ["file:///etc/passwd", "ftp://example.test/v1", "example.test/v1"]
+)
+def test_openai_compatible_provider_requires_http_url(base_url):
+    with pytest.raises(ValueError, match="http"):
+        embeddings.OpenAICompatibleEmbeddingProvider(
+            base_url=base_url, api_key="key", model="model"
+        )

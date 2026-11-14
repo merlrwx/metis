@@ -1801,6 +1801,7 @@ def get_ingestion_job(
 def main() -> None:
     uvicorn.run(
         app,
-        host=os.environ.get("HOST", "0.0.0.0"),
+        # Container default; set HOST to restrict the listening interface.
+        host=os.environ.get("HOST", "0.0.0.0"),  # noqa: S104
         port=int(os.environ.get("PORT", "8000")),
     )
