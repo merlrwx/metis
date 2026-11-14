@@ -109,8 +109,20 @@ services:
     environment:
       BACKEND_URL: http://backend:8000
       METIS_SESSION_COOKIE_SECRET: ${METIS_SESSION_COOKIE_SECRET:-metis-local-cookie-secret-change-before-use}
+      METIS_COOKIE_SECURE: ${METIS_COOKIE_SECURE:-auto}
+      METIS_PUBLIC_URL: ${METIS_PUBLIC_URL:-http://localhost:8501}
     ports:
       - "8501:8501"
+    healthcheck:
+      test:
+        - CMD
+        - /app/.venv/bin/python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/healthz')
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
 volumes:
   postgres-data:

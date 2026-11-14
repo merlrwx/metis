@@ -1,0 +1,95 @@
+{% extends "app_shell.html" %}
+{% from "_macros.html" import csrf, status_badge with context %}
+{% block title %}{{ document.title }}{% endblock %}
+{% block content %}
+<p><a href="/o/{{ org.id }}/knowledge">← Knowledge</a></p>
+<div class="page-header">
+  <div>
+    <h1>{{ document.title }}</h1>
+    <p class="row">{{ status_badge(document.ingestion_status) }} <span>{{ detail.visibility }}</span></p>
+  </div>
+</div>
+{% if document.ingestion_status == "failed" %}
+<div class="alert alert-error"><p>{{ document.ingestion_error or "Ingestion failed." }}{% if is_admin %} Retry below, or replace the file if it is corrupt or scanned without text.{% endif %}</p></div>
+{% endif %}
+
+<div class="grid grid-sidebar">
+  <div class="stack">
+    <section class="card">
+      <h2>Extracted text</h2>
+      <p class="faint">{{ detail.readiness }}</p>
+      <div class="preview" tabindex="0">{{ detail.extraction_preview or "No extracted text is available yet." }}</div>
+      {% if detail.preview_truncated %}<p class="hint">Showing the first 4,000 characters.</p>{% endif %}
+    </section>
+
+    {% if detail.versions %}
+    <section class="card">
+      <h2>Versions</h2>
+      <p class="faint">Only the current version is used for new answers. Earlier versions stay stored.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Stored</th><th></th></tr></thead>
+          <tbody>
+            {% for version in detail.versions %}
+            <tr>
+              <td>{{ version.filename }} {% if version.current %}<span class="badge badge-ok badge-plain">Current</span>{% endif %}</td>
+              <td class="faint">{{ version.created_at | when }}</td>
+              <td class="actions"><a class="btn btn-sm" hx-boost="false" href="/o/{{ org.id }}/documents/{{ document.id }}/versions/{{ version.id }}/download">Download</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if detail.versions_truncated %}<p class="hint">Showing the latest 50 versions.</p>{% endif %}
+    </section>
+    {% endif %}
+  </div>
+
+  <div class="stack">
+    <section class="card">
+      <h2>Details</h2>
+      <ul class="list">
+        <li class="row-between"><span class="muted">Pages</span><span>{{ detail.page_count }}</span></li>
+        <li class="row-between"><span class="muted">Searchable passages</span><span>{{ detail.chunk_count }}</span></li>
+        <li class="row-between"><span class="muted">Last indexed</span><span>{{ detail.last_successful_indexing | when("Not yet") }}</span></li>
+        {% if detail.source_modified_at %}<li class="row-between"><span class="muted">Source modified</span><span>{{ detail.source_modified_at | when }}</span></li>{% endif %}
+        <li class="row-between"><span class="muted">Added</span><span>{{ document.created_at | when }}</span></li>
+      </ul>
+    </section>
+
+    {% if is_admin %}
+    <section class="card">
+      <h2>Manage</h2>
+      <form method="post" action="/o/{{ org.id }}/documents/{{ document.id }}/rename">
+        {{ csrf() }}
+        <div class="field"><label for="title">Title</label><input id="title" name="title" type="text" required maxlength="512" value="{{ document.title }}"></div>
+        <button class="btn btn-sm" type="submit">Rename</button>
+      </form>
+      <hr class="divider">
+      <form method="post" action="/o/{{ org.id }}/documents/{{ document.id }}/replace" enctype="multipart/form-data">
+        {{ csrf() }}
+        <div class="field">
+          <label for="replacement">Upload a new version</label>
+          <input id="replacement" name="file" type="file" required accept="{{ accepted_types }}">
+          <p class="hint">Replaces this document even if the filename differs. Earlier versions are kept but excluded from new answers.</p>
+        </div>
+        <button class="btn btn-sm" type="submit"><span class="spinner" aria-hidden="true"></span>Replace</button>
+      </form>
+      <hr class="divider">
+      <div class="row">
+        <form method="post" action="/o/{{ org.id }}/documents/{{ document.id }}/reindex" class="inline-form">{{ csrf() }}<button class="btn btn-sm" type="submit">Re-index</button></form>
+        {% if document.ingestion_status == "failed" %}
+        <form method="post" action="/o/{{ org.id }}/documents/{{ document.id }}/retry" class="inline-form">{{ csrf() }}<button class="btn btn-sm" type="submit">Retry ingestion</button></form>
+        {% endif %}
+      </div>
+      <hr class="divider">
+      <form method="post" action="/o/{{ org.id }}/documents/{{ document.id }}/remove" hx-confirm="Remove {{ document.title }} from the library? It will no longer be used for answers, previews or downloads. Stored files and history are kept; this is not permanent erasure.">
+        {{ csrf() }}
+        <button class="btn btn-sm btn-danger" type="submit">Remove from library</button>
+        <p class="hint">Removal excludes the document from answers, previews and downloads. Original files, earlier versions and saved answers remain stored.</p>
+      </form>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

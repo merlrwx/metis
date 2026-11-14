@@ -1,0 +1,147 @@
+{% extends "app_shell.html" %}
+{% from "_macros.html" import csrf, initials with context %}
+{% block title %}Team & settings{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Team &amp; settings</h1>
+    <p>Manage {{ org.name }} and who can access its knowledge.</p>
+  </div>
+</div>
+
+<div class="stack">
+  <section class="card">
+    <h2>Organisation</h2>
+    {% if is_admin %}
+    <form method="post" action="/o/{{ org.id }}/settings/name" class="row">
+      {{ csrf() }}
+      <label for="org-name" class="sr-only">Organisation name</label>
+      <input id="org-name" name="name" type="text" required maxlength="255" value="{{ org.name }}" class="spacer">
+      <button class="btn" type="submit">Rename</button>
+    </form>
+    {% else %}
+    <p>{{ org.name }}</p>
+    {% endif %}
+    <p class="hint">Your role: <strong>{{ ROLE_LABELS.get(role, role) }}</strong>. Organisation ID <code>{{ org.id }}</code></p>
+  </section>
+
+  {% if is_admin %}
+  <section class="card" id="invitations">
+    <div class="card-header"><h2>Invite people</h2></div>
+    {% if new_invitation %}
+    <div class="alert alert-success" role="status">
+      <div class="spacer">
+        <p><strong>Invitation created for {{ new_invitation.email }}.</strong> Share this link with them. It works once, only for that email address, until {{ new_invitation.expires_at | when }}. It will not be shown again.</p>
+        <div class="copy-field">
+          <label for="invite-link" class="sr-only">Invitation link</label>
+          <input id="invite-link" type="text" readonly value="{{ new_invitation.link }}">
+          <button type="button" class="btn btn-sm" data-copy="invite-link">Copy</button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    <form method="post" action="/o/{{ org.id }}/settings/invitations" class="grid grid-3">
+      {{ csrf() }}
+      <div class="field">
+        <label for="invite-email">Email</label>
+        <input id="invite-email" name="email" type="email" required maxlength="320" placeholder="colleague@example.com">
+      </div>
+      <div class="field">
+        <label for="invite-role">Role</label>
+        <select id="invite-role" name="role">
+          <option value="member">Member — can search and ask</option>
+          {% if is_owner %}<option value="admin">Admin — can also manage knowledge and people</option>{% endif %}
+        </select>
+      </div>
+      <div class="field">
+        <span class="sr-only">Create</span>
+        <label aria-hidden="true">&nbsp;</label>
+        <button class="btn btn-primary btn-block" type="submit">Create invitation link</button>
+      </div>
+    </form>
+    {% if invitations %}
+    <h3>Pending invitations</h3>
+    <ul class="list">
+      {% for invitation in invitations %}
+      <li class="row-between">
+        <div>{{ invitation.email }} <span class="tag">{{ ROLE_LABELS.get(invitation.role, invitation.role) }}</span><div class="faint">Expires {{ invitation.expires_at | when }}</div></div>
+        <form method="post" action="/o/{{ org.id }}/settings/invitations/{{ invitation.id }}/revoke" class="inline-form" hx-confirm="Revoke the invitation for {{ invitation.email }}?">
+          {{ csrf() }}<button class="btn btn-sm btn-danger" type="submit">Revoke</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  <section class="card" id="members">
+    <div class="card-header"><h2>Members</h2><span class="faint">{{ members | length }} {{ "person" if members | length == 1 else "people" }}</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Person</th><th>Role</th><th class="hide-sm">Joined</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+        {% for member in members %}
+          {% set is_self = member.user_id == user.id %}
+          {% set last_owner = member.role == "owner" and owner_count <= 1 %}
+          <tr>
+            <td>
+              <div class="row"><span class="avatar" aria-hidden="true">{{ initials(member.name) }}</span>
+                <div><strong>{{ member.name }}</strong>{% if is_self %} <span class="faint">(you)</span>{% endif %}<div class="faint">{{ member.email }}</div></div>
+              </div>
+            </td>
+            <td>
+              {% if is_owner and not last_owner %}
+              <form method="post" action="/o/{{ org.id }}/settings/members/{{ member.user_id }}/role" class="row">
+                {{ csrf() }}
+                <label for="role-{{ member.user_id }}" class="sr-only">Role for {{ member.name }}</label>
+                <select id="role-{{ member.user_id }}" name="role">
+                  {% for value in ("owner", "admin", "member") %}<option value="{{ value }}" {% if member.role == value %}selected{% endif %}>{{ ROLE_LABELS[value] }}</option>{% endfor %}
+                </select>
+                <button class="btn btn-sm" type="submit">Save</button>
+              </form>
+              {% else %}
+              <span class="tag">{{ ROLE_LABELS.get(member.role, member.role) }}</span>
+              {% if last_owner %}<div class="faint">Only owner</div>{% endif %}
+              {% endif %}
+            </td>
+            <td class="hide-sm faint">{{ member.created_at | when }}</td>
+            <td class="actions">
+              {% if not is_self and not last_owner and (is_owner or member.role == "member") %}
+              <form method="post" action="/o/{{ org.id }}/settings/members/{{ member.user_id }}/remove" class="inline-form" hx-confirm="Remove {{ member.name }} from {{ org.name }}? They lose access immediately.">
+                {{ csrf() }}<button class="btn btn-sm btn-danger" type="submit">Remove</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <details class="disclosure">
+      <summary>Add someone who already has a Metis account</summary>
+      <form method="post" action="/o/{{ org.id }}/settings/members" class="disclosure-body grid grid-3">
+        {{ csrf() }}
+        <div class="field"><label for="member-email">Email</label><input id="member-email" name="email" type="email" required maxlength="320"></div>
+        <div class="field">
+          <label for="member-role">Role</label>
+          <select id="member-role" name="role"><option value="member">Member</option>{% if is_owner %}<option value="admin">Admin</option>{% endif %}</select>
+        </div>
+        <div class="field"><label aria-hidden="true">&nbsp;</label><button class="btn btn-block" type="submit">Add member</button></div>
+      </form>
+    </details>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <h2>Leave organisation</h2>
+    {% if is_owner and owner_count <= 1 %}
+    <p class="muted">You are the only owner. Make someone else an owner before leaving.</p>
+    {% else %}
+    <p class="muted">You will lose access to {{ org.name }}'s knowledge and your conversations there.</p>
+    <form method="post" action="/o/{{ org.id }}/settings/members/{{ user.id }}/remove" hx-confirm="Leave {{ org.name }}?">
+      {{ csrf() }}<button class="btn btn-danger" type="submit">Leave {{ org.name }}</button>
+    </form>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

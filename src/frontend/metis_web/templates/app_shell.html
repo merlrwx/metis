@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, icon, initials, flashes as render_flashes with context %}
+{% block body %}
+<input type="checkbox" id="nav-toggle" class="sr-only" aria-hidden="true" tabindex="-1">
+<div class="topbar">
+  <label for="nav-toggle" aria-label="Open navigation">{{ icon("menu") }}</label>
+  <a class="brand" href="/"><span class="brand-mark">M</span> Metis</a>
+  <span></span>
+</div>
+<div class="shell">
+  <aside class="sidebar" aria-label="Main navigation">
+    <a class="brand" href="/"><span class="brand-mark">M</span> Metis</a>
+    {% if org %}
+    <details class="org-switcher">
+      <summary aria-label="Switch organisation"><span>{{ org.name }}</span>{{ icon("chevron") }}</summary>
+      <div class="org-menu">
+        {% for item in orgs %}
+        <a href="/o/{{ item.organisation_id }}">{{ item.organisation_name }} <span class="role">· {{ ROLE_LABELS.get(item.role, item.role) }}</span></a>
+        {% endfor %}
+        <a href="/?new=1#create">+ New organisation</a>
+      </div>
+    </details>
+    <nav class="nav">
+      <a href="/o/{{ org.id }}" {% if nav == "overview" %}aria-current="page"{% endif %}>{{ icon("overview") }} Overview</a>
+      <a href="/o/{{ org.id }}/chat" {% if nav == "chat" %}aria-current="page"{% endif %}>{{ icon("chat") }} Ask</a>
+      <a href="/o/{{ org.id }}/knowledge" {% if nav == "knowledge" %}aria-current="page"{% endif %}>{{ icon("knowledge") }} Knowledge</a>
+      <a href="/o/{{ org.id }}/settings" {% if nav == "settings" %}aria-current="page"{% endif %}>{{ icon("settings") }} Team &amp; settings</a>
+    </nav>
+    {% elif orgs %}
+    <nav class="nav">
+      {% for item in orgs %}
+      <a href="/o/{{ item.organisation_id }}">{{ icon("overview") }} {{ item.organisation_name }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+    <div class="sidebar-footer">
+      <nav class="nav">
+        <a href="/account" {% if nav == "account" %}aria-current="page"{% endif %}>{{ icon("account") }} Account</a>
+      </nav>
+      {% if user %}
+      <div class="who">
+        <span class="avatar" aria-hidden="true">{{ initials(user.name) }}</span>
+        <div class="who-text">
+          <div class="who-name">{{ user.name }}</div>
+          <div class="who-email">{{ user.email }}</div>
+        </div>
+      </div>
+      {% endif %}
+      <form method="post" action="/logout" class="inline-form">
+        {{ csrf() }}
+        <button type="submit" class="btn btn-ghost btn-block">{{ icon("logout") }} Sign out</button>
+      </form>
+    </div>
+  </aside>
+  <main class="main" id="content" tabindex="-1">
+    <div class="{% block width %}page{% endblock %}">
+      {{ render_flashes(flashes) }}
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+{% endblock %}

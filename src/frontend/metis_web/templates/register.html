@@ -1,0 +1,27 @@
+{% extends "auth_shell.html" %}
+{% from "_macros.html" import csrf with context %}
+{% block title %}Create account{% endblock %}
+{% block content %}
+<h2>Create your account</h2>
+<p class="muted">Free to start. You can create an organisation or join one you were invited to.</p>
+{% if error %}<div class="alert alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
+<form method="post" action="/register" class="card">
+  {{ csrf() }}
+  <input type="hidden" name="next" value="{{ next }}">
+  <div class="field">
+    <label for="name">Full name</label>
+    <input id="name" name="name" type="text" autocomplete="name" required maxlength="255" value="{{ name }}" autofocus>
+  </div>
+  <div class="field">
+    <label for="email">Work email</label>
+    <input id="email" name="email" type="email" autocomplete="email" required maxlength="320" value="{{ email }}">
+  </div>
+  <div class="field">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="256" aria-describedby="password-hint">
+    <p class="hint" id="password-hint">At least 12 characters. A short phrase is easy to remember.</p>
+  </div>
+  <button type="submit" class="btn btn-primary btn-block"><span class="spinner" aria-hidden="true"></span>Create account</button>
+</form>
+<p class="auth-switch">Already have an account? <a href="/login{% if next != '/' %}?next={{ next | urlencode }}{% endif %}">Sign in</a></p>
+{% endblock %}

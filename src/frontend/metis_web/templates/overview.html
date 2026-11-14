@@ -1,0 +1,76 @@
+{% extends "app_shell.html" %}
+{% from "_macros.html" import csrf, status_badge, icon with context %}
+{% block title %}{{ org.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ org.name }}</h1>
+    <p>Your organisation's knowledge at a glance.</p>
+  </div>
+  {% if is_admin %}<a class="btn btn-primary" href="/o/{{ org.id }}/knowledge#upload">{{ icon("upload") }} Upload documents</a>{% endif %}
+</div>
+
+<form method="get" action="/o/{{ org.id }}/chat" class="card">
+  <label for="quick-ask">Ask a question</label>
+  <div class="row">
+    <input id="quick-ask" name="q" type="search" maxlength="4000" placeholder="e.g. What is our process after a medication incident?" class="spacer">
+    <button type="submit" class="btn btn-primary">{{ icon("send") }} Ask</button>
+  </div>
+  <p class="hint">Metis searches every indexed document and cites the passages it used.</p>
+</form>
+
+<div class="grid grid-3 stack">
+  <div class="card stat"><span class="stat-label">Documents</span><span class="stat-value">{{ stats.documents }}</span></div>
+  <div class="card stat"><span class="stat-label">Ready to answer from</span><span class="stat-value">{{ stats.indexed }}</span></div>
+  <div class="card stat"><span class="stat-label">Processing</span><span class="stat-value">{{ stats.processing }}</span></div>
+</div>
+
+{% if stats.failed %}
+<section class="card">
+  <div class="card-header"><h2>Needs attention</h2><span class="badge badge-bad">{{ stats.failed | length }} failed</span></div>
+  <ul class="list">
+    {% for document in stats.failed %}
+    <li class="row-between">
+      <div>
+        <a href="/o/{{ org.id }}/documents/{{ document.id }}">{{ document.title }}</a>
+        <div class="faint">{{ document.ingestion_error or "Ingestion failed" }}</div>
+      </div>
+      {% if is_admin %}
+      <form method="post" action="/o/{{ org.id }}/documents/{{ document.id }}/retry" class="inline-form">
+        {{ csrf() }}<input type="hidden" name="back" value="overview">
+        <button class="btn btn-sm" type="submit">Retry</button>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="card">
+  <div class="card-header"><h2>Recently updated</h2><a href="/o/{{ org.id }}/knowledge">View library</a></div>
+  {% if recent %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Document</th><th>Status</th><th class="hide-sm">Updated</th></tr></thead>
+      <tbody>
+        {% for document in recent %}
+        <tr>
+          <td><a class="title-link" href="/o/{{ org.id }}/documents/{{ document.id }}">{{ document.title }}</a></td>
+          <td>{{ status_badge(document.ingestion_status) }}</td>
+          <td class="hide-sm faint">{{ document.updated_at | ago }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    {{ icon("doc") }}
+    <h3>No documents yet</h3>
+    <p>{% if is_admin %}Upload a policy, procedure or record to start asking questions.{% else %}An owner or admin can upload the first documents.{% endif %}</p>
+    {% if is_admin %}<a class="btn btn-primary" href="/o/{{ org.id }}/knowledge#upload">Upload documents</a>{% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
