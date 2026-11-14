@@ -13,10 +13,7 @@ class UserRegister(BaseModel):
     @field_validator("email")
     @classmethod
     def normalize_email(cls, value: str) -> str:
-        email = value.strip().casefold()
-        if email.count("@") != 1 or any(character.isspace() for character in email):
-            raise ValueError("Enter a valid email address")
-        return email
+        return _normalized_email(value)
 
     @field_validator("name")
     @classmethod
@@ -36,10 +33,53 @@ class UserView(BaseModel):
     created_at: datetime
 
 
+def _normalized_email(value: str) -> str:
+    email = value.strip().casefold()
+    if email.count("@") != 1 or any(character.isspace() for character in email):
+        raise ValueError("Enter a valid email address")
+    local, domain = email.split("@")
+    if not local or not domain:
+        raise ValueError("Enter a valid email address")
+    return email
+
+
 class TokenView(BaseModel):
     access_token: str
     # OAuth token type label, not a secret.
     token_type: str = "bearer"  # noqa: S105
+    refresh_token: str
+    expires_in: int
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=1, max_length=512)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=12, max_length=256)
+
+
+class ProfileUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def trim_name(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("Name cannot be blank")
+        return name
+
+
+class SessionView(BaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    last_used_at: datetime
+    expires_at: datetime
+    user_agent: str | None
+    ip_address: str | None
+    current: bool
 
 
 class MembershipView(BaseModel):
@@ -59,10 +99,41 @@ class MemberAdd(BaseModel):
     @field_validator("email")
     @classmethod
     def normalize_email(cls, value: str) -> str:
-        email = value.strip().casefold()
-        if email.count("@") != 1 or any(character.isspace() for character in email):
-            raise ValueError("Enter a valid email address")
-        return email
+        return _normalized_email(value)
+
+
+class MemberRoleUpdate(BaseModel):
+    role: str = Field(pattern="^(owner|admin|member)$")
+
+
+class InvitationCreate(MemberAdd):
+    pass
+
+
+class InvitationView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    email: str
+    role: str
+    created_at: datetime
+    expires_at: datetime
+
+
+class InvitationCreatedView(InvitationView):
+    token: str
+
+
+class InvitationAccept(BaseModel):
+    token: str = Field(min_length=16, max_length=256)
+
+
+class InvitationPreview(BaseModel):
+    organisation_name: str
+    email: str
+    role: str
+    expires_at: datetime
 
 
 class OrganisationMemberView(BaseModel):
