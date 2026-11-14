@@ -8,9 +8,16 @@ from backend_test_client import authenticated_client, register_and_login
 from backend import database, main
 
 
+def enable_stub_queue(monkeypatch):
+    """Mark the queue configured without connecting the real Redis broker."""
+    monkeypatch.setattr(main, "QUEUE_CONFIGURED", True)
+    monkeypatch.setattr(main.broker, "startup", AsyncMock())
+    monkeypatch.setattr(main.broker, "shutdown", AsyncMock())
+
+
 def test_source_sync_requires_admin_and_owned_source_and_hides_credentials(monkeypatch):
     publisher = AsyncMock()
-    monkeypatch.setattr(main, "QUEUE_CONFIGURED", True)
+    enable_stub_queue(monkeypatch)
     monkeypatch.setattr(main.synchronize_source, "kiq", publisher)
     with authenticated_client(app) as client:
         org = client.post(
@@ -122,7 +129,7 @@ def test_connection_check_is_owned_and_redacts_failures(monkeypatch):
 
 
 def test_pause_disconnect_and_group_scope_are_predictable(monkeypatch):
-    monkeypatch.setattr(main, "QUEUE_CONFIGURED", True)
+    enable_stub_queue(monkeypatch)
     publisher = AsyncMock()
     monkeypatch.setattr(main.synchronize_source, "kiq", publisher)
     with authenticated_client(app) as client:
