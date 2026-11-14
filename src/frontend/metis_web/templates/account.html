@@ -1,0 +1,76 @@
+{% extends "app_shell.html" %}
+{% from "_macros.html" import csrf with context %}
+{% block title %}Account{% endblock %}
+{% block width %}page-narrow{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Your account</h1>
+    <p>{{ user.email }} · member since {{ user.created_at | when }}</p>
+  </div>
+</div>
+<div class="stack">
+  <section class="card">
+    <h2>Profile</h2>
+    <form method="post" action="/account/profile" class="row">
+      {{ csrf() }}
+      <label for="profile-name" class="sr-only">Name</label>
+      <input id="profile-name" name="name" type="text" required maxlength="255" value="{{ user.name }}" class="spacer" autocomplete="name">
+      <button class="btn" type="submit">Save</button>
+    </form>
+  </section>
+
+  <section class="card" id="password">
+    <h2>Password</h2>
+    <form method="post" action="/account/password">
+      {{ csrf() }}
+      <input type="text" name="username" value="{{ user.email }}" autocomplete="username" hidden>
+      <div class="field"><label for="current_password">Current password</label><input id="current_password" name="current_password" type="password" required autocomplete="current-password" maxlength="256"></div>
+      <div class="grid grid-2">
+        <div class="field"><label for="new_password">New password</label><input id="new_password" name="new_password" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></div>
+        <div class="field"><label for="confirm_password">Confirm new password</label><input id="confirm_password" name="confirm_password" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></div>
+      </div>
+      <button class="btn" type="submit">Change password</button>
+      <p class="hint">Changing your password signs out every other session.</p>
+    </form>
+  </section>
+
+  <section class="card" id="sessions">
+    <div class="card-header">
+      <h2>Where you're signed in</h2>
+      {% if sessions | length > 1 %}
+      <form method="post" action="/account/sessions/revoke-others" class="inline-form" hx-confirm="Sign out every other session?">
+        {{ csrf() }}<button class="btn btn-sm btn-danger" type="submit">Sign out other sessions</button>
+      </form>
+      {% endif %}
+    </div>
+    <ul class="list">
+      {% for item in sessions %}
+      <li class="row-between">
+        <div>
+          <strong>{{ item.user_agent | device }}</strong>{% if item.current %} <span class="badge badge-ok badge-plain">This device</span>{% endif %}
+          <div class="faint">Signed in {{ item.created_at | when }} · last active {{ item.last_used_at | ago }}</div>
+        </div>
+        {% if not item.current %}
+        <form method="post" action="/account/sessions/{{ item.id }}/revoke" class="inline-form">
+          {{ csrf() }}<button class="btn btn-sm" type="submit">Sign out</button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {% if orgs %}
+  <section class="card">
+    <h2>Organisations</h2>
+    <ul class="list">
+      {% for item in orgs %}
+      <li class="row-between"><a href="/o/{{ item.organisation_id }}">{{ item.organisation_name }}</a><span class="tag">{{ ROLE_LABELS.get(item.role, item.role) }}</span></li>
+      {% endfor %}
+    </ul>
+    <p><a href="/?new=1">+ Create another organisation</a></p>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

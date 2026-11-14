@@ -11,5 +11,3 @@ extend-select = ["S"]
 # Operator scripts and E2E helpers run fixed local commands.
 "scripts/**" = ["S101", "S105", "S106", "S108", "S311", "S603", "S607"]
 "kubernetes/**" = ["S101", "S105", "S106", "S108", "S603", "S607"]
-# Legacy Streamlit client, replaced by the new web frontend.
-"src/frontend/api_client.py" = ["S310"]

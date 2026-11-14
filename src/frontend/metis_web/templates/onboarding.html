@@ -1,0 +1,26 @@
+{% extends "app_shell.html" %}
+{% from "_macros.html" import csrf with context %}
+{% block title %}Create an organisation{% endblock %}
+{% block width %}page-narrow{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{% if welcome %}Welcome to Metis, {{ user.name.split()[0] }}{% else %}Create an organisation{% endif %}</h1>
+    <p>An organisation keeps its documents, conversations and members private from every other organisation.</p>
+  </div>
+</div>
+{% if error %}<div class="alert alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
+<form method="post" action="/organisations" class="card" id="create">
+  {{ csrf() }}
+  <div class="field">
+    <label for="org-name">Organisation name</label>
+    <input id="org-name" name="name" type="text" required maxlength="255" placeholder="e.g. Riverside Care Group" autofocus>
+    <p class="hint">You will be its owner. You can rename it and invite your team afterwards.</p>
+  </div>
+  <button type="submit" class="btn btn-primary"><span class="spinner" aria-hidden="true"></span>Create organisation</button>
+</form>
+<div class="card">
+  <h2>Joining a team?</h2>
+  <p class="muted">Ask an admin of your organisation for an invitation link sent to <strong>{{ user.email }}</strong>. Open it while signed in to join.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "auth_shell.html" %}
+{% from "_macros.html" import csrf with context %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<h2>Welcome back</h2>
+<p class="muted">Sign in to your Metis workspace.</p>
+{% if error %}<div class="alert alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
+<form method="post" action="/login" class="card">
+  {{ csrf() }}
+  <input type="hidden" name="next" value="{{ next }}">
+  <div class="field">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="username" required maxlength="320" value="{{ email }}" autofocus>
+  </div>
+  <div class="field">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+  </div>
+  <button type="submit" class="btn btn-primary btn-block"><span class="spinner" aria-hidden="true"></span>Sign in</button>
+</form>
+<p class="auth-switch">New to Metis? <a href="/register{% if next != '/' %}?next={{ next | urlencode }}{% endif %}">Create an account</a></p>
+{% endblock %}

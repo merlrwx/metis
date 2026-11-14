@@ -1,0 +1,167 @@
+{% extends "app_shell.html" %}
+{% from "_macros.html" import csrf, icon, initials with context %}
+{% block title %}{{ conversation.title if conversation else "Ask" }}{% endblock %}
+{% macro citation_list(message) %}
+{% if message.citations %}
+<div class="citations">
+  <span class="faint">Sources · {{ message.citations | length }}</span>
+  {% for citation in message.citations %}
+  <details class="citation">
+    <summary><span class="ref">C{{ loop.index }}</span> {{ citation.document_title or "Source document" }}{% if citation.page is not none %} <span class="faint">· p. {{ citation.page }}</span>{% endif %}</summary>
+    <div class="body">
+      <div class="faint">
+        {% if citation.source_name %}{{ citation.source_name }} · {% endif %}{% if citation.section %}{{ citation.section }}{% endif %}
+        {% if citation.source_modified_at %} · modified {{ citation.source_modified_at | when }}{% endif %}
+      </div>
+      {% if citation.source_type == "microsoft365" %}
+        <div class="faint">Library last synced {{ citation.source_last_synced_at | when("never") }}</div>
+        {% if citation.source_freshness in ("stale", "snapshot", "not_synced") or citation.source_sync_status in ("failed", "paused", "queued", "syncing") %}
+        <div class="alert alert-warn"><p>This is a stored snapshot of the library and may be out of date.</p></div>
+        {% endif %}
+      {% endif %}
+      <blockquote>{{ citation.snippet }}</blockquote>
+      <div class="row">
+        {% if citation.document_version_id %}<a class="btn btn-sm" hx-boost="false" href="/o/{{ org.id }}/documents/{{ citation.document_id }}/versions/{{ citation.document_version_id }}/download">Download original</a>{% endif %}
+        <a class="btn btn-sm btn-ghost" href="/o/{{ org.id }}/documents/{{ citation.document_id }}">Document details</a>
+        {% set link = citation.source_url | safe_url %}{% if link %}<a class="btn btn-sm btn-ghost" href="{{ link }}" target="_blank" rel="noopener noreferrer">Open in source</a>{% endif %}
+      </div>
+    </div>
+  </details>
+  {% endfor %}
+</div>
+{% elif message.citations is not none %}
+<p class="faint">No supporting sources were found for this answer.</p>
+{% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="chat-layout">
+  <aside class="card conversation-list" aria-label="Conversations">
+    <a class="btn btn-primary btn-block" href="/o/{{ org.id }}/chat">+ New conversation</a>
+    <hr class="divider">
+    {% for item in conversations %}
+    <a href="/o/{{ org.id }}/chat/{{ item.id }}" {% if conversation and conversation.id == item.id %}aria-current="page"{% endif %}>{{ item.title }}<span class="faint">{{ item.created_at | ago }}</span></a>
+    {% else %}
+    <p class="faint">Your conversations will appear here.</p>
+    {% endfor %}
+    {% if offset or conversations | length == page_size %}
+    <div class="row-between">
+      {% if offset %}<a href="?offset={{ [offset - page_size, 0] | max }}">← Newer</a>{% else %}<span></span>{% endif %}
+      {% if conversations | length == page_size %}<a href="?offset={{ offset + page_size }}">Older →</a>{% endif %}
+    </div>
+    {% endif %}
+    <p class="faint">Conversations are visible to you and to organisation owners and admins.</p>
+  </aside>
+
+  <section aria-label="Conversation">
+    {% if conversation %}
+    <div class="page-header">
+      <h1>{{ conversation.title }}</h1>
+      <details class="disclosure">
+        <summary>Manage</summary>
+        <div class="disclosure-body">
+          <form method="post" action="/o/{{ org.id }}/chat/{{ conversation.id }}/rename">
+            {{ csrf() }}
+            <div class="field"><label for="conv-title">Name</label><input id="conv-title" name="title" type="text" required maxlength="512" value="{{ conversation.title }}"></div>
+            <button class="btn btn-sm" type="submit">Rename</button>
+          </form>
+          <form method="post" action="/o/{{ org.id }}/chat/{{ conversation.id }}/delete" hx-confirm="Delete this conversation?">
+            {{ csrf() }}<button class="btn btn-sm btn-danger" type="submit">Delete conversation</button>
+          </form>
+        </div>
+      </details>
+    </div>
+    {% endif %}
+
+    <div class="thread">
+      {% for message in messages %}
+      <article class="msg msg-{{ message.role }}" id="{{ 'latest' if loop.last else 'message-' ~ message.id }}">
+        <span class="msg-avatar" aria-hidden="true">{{ "M" if message.role == "assistant" else initials(user.name) }}</span>
+        <div class="msg-body">
+          {% set outcome = OUTCOME_LABELS.get(message.outcome) %}
+          {% if outcome %}<span class="badge badge-busy">{{ outcome }}</span>{% endif %}
+          <div class="bubble">{% if message.role == "assistant" %}{{ message.content | markdown }}{% else %}<p>{{ message.content }}</p>{% endif %}</div>
+          {% if message.role == "assistant" %}
+          {{ citation_list(message) }}
+          <details class="feedback">
+            <summary>Was this helpful?</summary>
+            <form method="post" action="/o/{{ org.id }}/chat/{{ conversation.id }}/messages/{{ message.id }}/feedback" class="card">
+              {{ csrf() }}
+              <div class="row">
+                <label class="check"><input type="radio" name="vote" value="helpful" required> Helpful</label>
+                <label class="check"><input type="radio" name="vote" value="problem"> Something is wrong</label>
+              </div>
+              <div class="field">
+                <label for="reason-{{ message.id }}">Reason (optional)</label>
+                <select id="reason-{{ message.id }}" name="reason">
+                  <option value="">—</option>
+                  <option value="wrong_source">Wrong source</option>
+                  <option value="missing_information">Missing information</option>
+                  <option value="incorrect_answer">Incorrect answer</option>
+                </select>
+              </div>
+              <div class="field"><label for="comment-{{ message.id }}">Comment (optional)</label><input id="comment-{{ message.id }}" name="comment" type="text" maxlength="1000"></div>
+              <button class="btn btn-sm" type="submit">Send feedback</button>
+            </form>
+          </details>
+          {% endif %}
+        </div>
+      </article>
+      {% else %}
+      <div class="empty">
+        {{ icon("chat") }}
+        <h3>Ask anything about {{ org.name }}'s knowledge</h3>
+        <p>Metis answers only from your indexed documents and cites every source. If the evidence is missing, it says so.</p>
+        {% if not ready_documents %}<p><strong>No documents are ready yet.</strong> {% if is_admin %}<a href="/o/{{ org.id }}/knowledge#upload">Upload some first.</a>{% endif %}</p>{% endif %}
+        <div class="suggestions">
+          {% for suggestion in suggestions %}<button type="button" class="suggestion" data-fill="{{ suggestion }}">{{ suggestion }}</button>{% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="composer">
+      {% if error %}<div class="alert alert-error" role="alert"><p>{{ error }} Your question is kept below; sending it again is safe.</p></div>{% endif %}
+      <form method="post" action="/o/{{ org.id }}/chat" class="card" hx-indicator="this">
+        {{ csrf() }}
+        <input type="hidden" name="request_id" value="{{ request_id }}">
+        {% if conversation %}<input type="hidden" name="conversation_id" value="{{ conversation.id }}">{% endif %}
+        <label for="message" class="sr-only">Your question</label>
+        <textarea id="message" name="message" rows="2" maxlength="4000" required placeholder="Ask a question…  (Enter to send, Shift+Enter for a new line)" data-submit-on-enter>{{ draft }}</textarea>
+        <div class="row-between">
+          <details class="disclosure scope">
+            <summary class="scope-summary">
+              Scope:
+              {% if scope.group_id %}group “{{ scope_names.get(scope.group_id, "unavailable") }}”{% elif scope.source_ids %}{{ scope.source_ids | length }} source(s){% else %}all knowledge{% endif %}{% if scope.document_ids %} · {{ scope.document_ids | length }} document(s){% endif %}
+            </summary>
+            <div class="disclosure-body">
+              <p class="faint">Optional. Narrow the search when you know where the answer is.</p>
+              <div class="field">
+                <label for="scope-group">Saved group</label>
+                <select id="scope-group" name="group_id">
+                  <option value="">No group</option>
+                  {% for group in groups %}<option value="{{ group.id }}" {% if scope.group_id == group.id %}selected{% endif %}>{{ group.name }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="field">
+                <label for="scope-sources">Sources (ignored when a group is chosen)</label>
+                <select id="scope-sources" name="source_ids" multiple>
+                  {% for source in sources %}<option value="{{ source.id }}" {% if source.id in (scope.source_ids or []) %}selected{% endif %}>{{ source.name }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="field">
+                <label for="scope-documents">Documents</label>
+                <select id="scope-documents" name="document_ids" multiple>
+                  {% for document in ready_documents %}<option value="{{ document.id }}" {% if document.id in (scope.document_ids or []) %}selected{% endif %}>{{ document.title }}</option>{% endfor %}
+                  {% for id in scope.document_ids or [] %}{% if id not in ready_documents | map(attribute="id") | list %}<option value="{{ id }}" selected>Unavailable document — deselect to continue</option>{% endif %}{% endfor %}
+                </select>
+              </div>
+            </div>
+          </details>
+          <button type="submit" class="btn btn-primary"><span class="spinner" aria-hidden="true"></span><span class="idle-label">{{ icon("send") }} Send</span><span class="busy-label">Searching and answering…</span></button>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

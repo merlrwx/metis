@@ -25,14 +25,12 @@ FROM python:3.13.15-alpine3.24
 # Create a non-root user and group with specific IDs
 RUN addgroup -S -g 1000 app && adduser -S -u 1000 -G app app
 
-# Copy the environment and application files
+# Copy the environment (which contains the installed metis_web package)
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
-COPY --chown=app:app app.py /app/app.py
-COPY --chown=app:app api_client.py /app/api_client.py
-COPY --chown=app:app cookie_component /app/cookie_component
 
-# Run the application
 WORKDIR /app
 USER app
 EXPOSE 8501
-CMD ["/app/.venv/bin/streamlit", "run", "--server.address", "0.0.0.0", "/app/app.py"]
+HEALTHCHECK --interval=10s --timeout=3s --retries=5 \
+  CMD ["/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/healthz')"]
+CMD ["/app/.venv/bin/metis-web"]

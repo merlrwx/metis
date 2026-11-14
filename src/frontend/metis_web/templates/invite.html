@@ -1,0 +1,25 @@
+{% extends "app_shell.html" if user else "auth_shell.html" %}
+{% from "_macros.html" import csrf with context %}
+{% block title %}Invitation{% endblock %}
+{% block width %}page-narrow{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Join {{ preview.organisation_name }}</h2>
+  <p class="muted">You have been invited as {{ "an" if preview.role == "admin" else "a" }} <strong>{{ ROLE_LABELS.get(preview.role, preview.role) | lower }}</strong>. This invitation is for <strong>{{ preview.email }}</strong> and expires {{ preview.expires_at | when }}.</p>
+  {% if user %}
+    {% if email_matches %}
+    <form method="post" action="{{ invite_path }}/accept">
+      {{ csrf() }}
+      <button type="submit" class="btn btn-primary">Accept and join</button>
+    </form>
+    {% else %}
+    <div class="alert alert-warn"><p>You are signed in as {{ user.email }}. Sign out and sign in as {{ preview.email }} to accept.</p></div>
+    {% endif %}
+  {% else %}
+    <div class="row">
+      <a class="btn btn-primary" href="/register?next={{ invite_path | urlencode }}&amp;email={{ preview.email | urlencode }}">Create an account</a>
+      <a class="btn" href="/login?next={{ invite_path | urlencode }}">I already have an account</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

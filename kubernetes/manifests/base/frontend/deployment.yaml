@@ -32,19 +32,21 @@ spec:
                 secretKeyRef:
                   name: metis-runtime
                   key: METIS_SESSION_COOKIE_SECRET
+            - name: METIS_COOKIE_SECURE
+              value: "auto"
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop: [ALL]
           readinessProbe:
             httpGet:
-              path: /_stcore/health
+              path: /healthz
               port: 8501
             initialDelaySeconds: 3
             periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /_stcore/health
+              path: /healthz
               port: 8501
             initialDelaySeconds: 10
             periodSeconds: 10
