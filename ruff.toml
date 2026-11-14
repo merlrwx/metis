@@ -1,2 +1,15 @@
 # Preserve the supplied implementation plan verbatim, including code examples.
 extend-exclude = ["plans"]
+
+[lint]
+# Default rules plus flake8-bandit security checks.
+extend-select = ["S"]
+
+[lint.per-file-ignores]
+# Tests assert freely and use fixed throwaway credentials and temp paths.
+"**/tests/**" = ["S101", "S105", "S106", "S107", "S108", "S311", "S603", "S607"]
+# Operator scripts and E2E helpers run fixed local commands.
+"scripts/**" = ["S101", "S105", "S106", "S108", "S311", "S603", "S607"]
+"kubernetes/**" = ["S101", "S105", "S106", "S108", "S603", "S607"]
+# Legacy Streamlit client, replaced by the new web frontend.
+"src/frontend/api_client.py" = ["S310"]

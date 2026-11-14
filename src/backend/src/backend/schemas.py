@@ -38,7 +38,8 @@ class UserView(BaseModel):
 
 class TokenView(BaseModel):
     access_token: str
-    token_type: str = "bearer"
+    # OAuth token type label, not a secret.
+    token_type: str = "bearer"  # noqa: S105
 
 
 class MembershipView(BaseModel):

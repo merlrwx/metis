@@ -123,3 +123,13 @@ def test_semantic_provider_accepts_configured_dimensions_and_rejects_mismatch(
     )
     with pytest.raises(RuntimeError, match="384 finite values"):
         provider.embed_query("synthetic")
+
+
+@pytest.mark.parametrize(
+    "base_url", ["file:///etc/passwd", "ftp://example.test/v1", "example.test/v1"]
+)
+def test_openai_compatible_provider_requires_http_url(base_url):
+    with pytest.raises(ValueError, match="http"):
+        embeddings.OpenAICompatibleEmbeddingProvider(
+            base_url=base_url, api_key="key", model="model"
+        )
